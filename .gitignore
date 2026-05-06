@@ -23,10 +23,10 @@ frontend/yarn-error.log*
 # =========================
 # PYTHON / FASTAPI (BACKEND)
 # =========================
-backend/__pycache__/
-backend/*.pyc
-backend/*.pyo
-backend/*.pyd
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 backend/.Python
 backend/venv/

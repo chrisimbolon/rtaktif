@@ -1,6 +1,5 @@
 """
 Async SQLAlchemy engine + session factory.
-Mirrors hr-app's core/database.py convention.
 """
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase

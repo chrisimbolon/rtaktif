@@ -1,7 +1,9 @@
+"""PostgreSQL implementation of ResidentRepository — updated for new schema."""
 from typing import Optional
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.warga.domain.entities import Resident, ResidentStatus, OwnershipType
 from app.modules.warga.domain.repositories import ResidentRepository
 from app.modules.warga.infrastructure.models import ResidentModel
@@ -22,10 +24,14 @@ class PgResidentRepository(ResidentRepository):
         row = result.scalar_one_or_none()
         return self._to_entity(row) if row else None
 
-    async def get_by_rt_group(self, rt_group_id: UUID, status=None) -> list[Resident]:
+    async def get_by_rt_group(
+        self, rt_group_id: UUID, status: Optional[ResidentStatus] = None
+    ) -> list[Resident]:
+        # Uses composite index: ix_residents_rt_status
         q = select(ResidentModel).where(ResidentModel.rt_group_id == rt_group_id)
         if status:
             q = q.where(ResidentModel.status == status.value)
+        q = q.order_by(ResidentModel.full_name)
         result = await self.session.execute(q)
         return [self._to_entity(r) for r in result.scalars().all()]
 
@@ -36,23 +42,36 @@ class PgResidentRepository(ResidentRepository):
     async def save(self, entity: Resident) -> Resident:
         existing = await self.session.get(ResidentModel, entity.id)
         if existing:
-            existing.status = entity.status.value
-            existing.kk_file_url = entity.kk_file_url
+            existing.status       = entity.status.value
+            existing.kk_file_url  = entity.kk_file_url
             existing.ktp_file_url = entity.ktp_file_url
             existing.member_count = entity.member_count
-            existing.phone = entity.phone
+            existing.phone        = entity.phone
+            existing.verified_at  = entity.verified_at
+            existing.verified_by  = entity.verified_by
         else:
             self.session.add(ResidentModel(
-                id=entity.id, rt_group_id=entity.rt_group_id,
-                user_id=entity.user_id, full_name=entity.full_name,
-                phone=entity.phone, nik=entity.nik,
-                street=entity.street, rt_number=entity.rt_number,
-                rw_number=entity.rw_number, kelurahan=entity.kelurahan,
-                kecamatan=entity.kecamatan, kota=entity.kota,
-                block=entity.block, unit_number=entity.unit_number,
+                id=entity.id,
+                rt_group_id=entity.rt_group_id,
+                user_id=entity.user_id,
+                full_name=entity.full_name,
+                phone=entity.phone,
+                nik=entity.nik,
+                street=entity.street,
+                rt_number=entity.rt_number,
+                rw_number=entity.rw_number,
+                kelurahan=entity.kelurahan,
+                kecamatan=entity.kecamatan,
+                kota=entity.kota,
+                block=entity.block,
+                unit_number=entity.unit_number,
                 ownership_type=entity.ownership_type.value,
-                status=entity.status.value, member_count=entity.member_count,
-                created_at=entity.created_at, updated_at=entity.updated_at,
+                status=entity.status.value,
+                member_count=entity.member_count,
+                verified_at=entity.verified_at,
+                verified_by=entity.verified_by,
+                created_at=entity.created_at,
+                updated_at=entity.updated_at,
             ))
         await self.session.flush()
         return entity
@@ -68,14 +87,27 @@ class PgResidentRepository(ResidentRepository):
 
     def _to_entity(self, row: ResidentModel) -> Resident:
         return Resident(
-            id=row.id, rt_group_id=row.rt_group_id, user_id=row.user_id,
-            full_name=row.full_name, phone=row.phone, nik=row.nik,
-            street=row.street, rt_number=row.rt_number, rw_number=row.rw_number,
-            kelurahan=row.kelurahan, kecamatan=row.kecamatan, kota=row.kota,
-            block=row.block, unit_number=row.unit_number,
+            id=row.id,
+            rt_group_id=row.rt_group_id,
+            user_id=row.user_id,
+            full_name=row.full_name,
+            phone=row.phone,
+            nik=row.nik,
+            street=row.street,
+            rt_number=row.rt_number,
+            rw_number=row.rw_number,
+            kelurahan=row.kelurahan,
+            kecamatan=row.kecamatan,
+            kota=row.kota,
+            block=row.block,
+            unit_number=row.unit_number,
             ownership_type=OwnershipType(row.ownership_type),
             status=ResidentStatus(row.status),
             member_count=row.member_count,
-            kk_file_url=row.kk_file_url, ktp_file_url=row.ktp_file_url,
-            created_at=row.created_at, updated_at=row.updated_at,
+            kk_file_url=row.kk_file_url,
+            ktp_file_url=row.ktp_file_url,
+            verified_at=row.verified_at,
+            verified_by=row.verified_by,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )

@@ -1,10 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BASE_DIR / ".env",   # ✅ FIXED
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -17,10 +19,10 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://rukunrt:rukunrt_secret@db:5432/rukunrt_db"
-    POSTGRES_USER: str = "rukunrt"
-    POSTGRES_PASSWORD: str = "rukunrt_secret"
-    POSTGRES_DB: str = "rukunrt_db"
+    DATABASE_URL: str
+    POSTGRES_USER: str | None = None
+    POSTGRES_PASSWORD: str | None = None
+    POSTGRES_DB: str | None = None
 
     # Redis
     REDIS_URL: str = "redis://:redis_secret@redis:6379/0"
@@ -52,3 +54,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+print("SETTINGS DATABASE_URL:", settings.DATABASE_URL)
+print("ENV FILE PATH:", BASE_DIR / ".env") 

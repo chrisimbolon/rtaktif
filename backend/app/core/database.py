@@ -16,7 +16,7 @@ from sqlalchemy.types import TypeDecorator
 
 from app.core.config import settings
 
-
+print("🔥 DATABASE_URL USED BY ENGINE:", settings.DATABASE_URL)
 # ── Timezone-aware DateTime type ──────────────────────────────────
 class TZDateTime(TypeDecorator):
     """

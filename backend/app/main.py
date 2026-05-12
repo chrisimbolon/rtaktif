@@ -5,7 +5,6 @@ Zero business logic here.
 """
 from contextlib import asynccontextmanager
 import logging
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -27,7 +26,6 @@ from app.modules.komunikasi.domain.events import AnnouncementPublished
 
 
 logger = logging.getLogger("rukunrt")
-
 
 async def _on_invoice_generated(event: InvoiceGenerated):
     """

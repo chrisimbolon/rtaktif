@@ -28,8 +28,7 @@ show_json()   { echo "$1" | python3 -m json.tool 2>/dev/null || echo "$1"; }
 
 # Check API is running
 check_api() {
-  # if ! curl -sf "$BASE/../health" > /dev/null 2>&1; then
-    if ! curl -sf "http://localhost:8000/health" > /dev/null 2>&1; then
+  if ! curl -sf "http://localhost:8000/health" > /dev/null 2>&1; then
     echo -e "${RED}ERROR: API not running at $BASE${NC}"
     echo "Start it with: uvicorn app.main:app --reload --port 8000"
     exit 1
@@ -122,17 +121,30 @@ STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "422" ] && pass "Invalid email → 422 Unprocessable ✓" || fail "Expected 422, got: $STATUS"
 
-# 2d. Short password
+# 2d. Short password (use unique email to avoid 409 masking the 422)
 log_step "POST /auth/register — short password (should fail 422)"
+SHORT_EMAIL="shortpass_$(date +%s)@rtaktif.id"
 RES=$(call POST /auth/register "{
   \"full_name\": \"Short Pass\",
-  \"email\": \"short@test.com\",
+  \"email\": \"$SHORT_EMAIL\",
   \"phone\": \"081234567894\",
   \"password\": \"123\"
 }")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "422" ] && pass "Short password → 422 Unprocessable ✓" || fail "Expected 422, got: $STATUS"
+
+# 2e. Short full_name (should fail 422)
+log_step "POST /auth/register — short full_name (should fail 422)"
+RES=$(call POST /auth/register "{
+  \"full_name\": \"AB\",
+  \"email\": \"shortname_$(date +%s)@rtaktif.id\",
+  \"phone\": \"081234567895\",
+  \"password\": \"validpass123\"
+}")
+STATUS=$(get_status "$RES")
+echo "  Status: $STATUS"
+[ "$STATUS" = "422" ] && pass "Short full_name → 422 Unprocessable ✓" || fail "Expected 422, got: $STATUS"
 
 
 # ── SECTION 3: Login — Pending user blocked ────────────────────────

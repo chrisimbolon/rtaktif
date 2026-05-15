@@ -1,36 +1,67 @@
 """
-IAM routes — mirrors hr-app presentation/api/v1/routes.py convention.
-Thin layer: validate input → call use case → return response.
-Zero business logic here.
+IAM routes — all endpoints for auth, users, and RT groups.
+IntegrityError caught at every write endpoint to prevent 500s
+from DB-level unique constraint violations.
 """
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
-from app.core.exceptions import DuplicateEntityError, UnauthorizedError, ValidationError, EntityNotFoundError
+from app.core.exceptions import (
+    DuplicateEntityError, UnauthorizedError,
+    ValidationError, EntityNotFoundError,
+)
 from app.modules.iam.application.schemas import (
     RegisterUserRequest, LoginRequest, CreateRTGroupRequest,
-    TokenResponse, UserResponse, RTGroupResponse,
 )
 from app.modules.iam.application.use_cases.register_user import RegisterUser
 from app.modules.iam.application.use_cases.login_user import LoginUser
 from app.modules.iam.application.use_cases.verify_user import VerifyUser
 from app.modules.iam.application.use_cases.create_rt_group import CreateRTGroup
 from app.modules.iam.application.use_cases.assign_role import AssignRole
-from app.modules.iam.infrastructure.repository import PgUserRepository, PgRTGroupRepository
+from app.modules.iam.infrastructure.repository import (
+    PgUserRepository, PgRTGroupRepository,
+)
 
 router = APIRouter()
 
 
+def _integrity_message(e: IntegrityError) -> str:
+    """
+    Converts a PostgreSQL UniqueViolationError into a human-readable
+    Indonesian message by inspecting the constraint name.
+    """
+    msg = str(e.orig).lower()
+    if "uq_users_phone" in msg:
+        return "Nomor HP sudah terdaftar"
+    if "uq_users_email" in msg or "users_email_key" in msg:
+        return "Email sudah terdaftar"
+    if "uq_residents_rt_user" in msg:
+        return "Anda sudah terdaftar sebagai warga di RT ini"
+    if "uq_invoices_resident_period" in msg:
+        return "Tagihan untuk periode ini sudah ada"
+    if "uq_rt_groups_location" in msg:
+        return "RT/RW di lokasi ini sudah terdaftar"
+    return "Data duplikat — periksa kembali input Anda"
+
+
 # ── Auth ──────────────────────────────────────────────────────────
+
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED, tags=["Auth"])
-async def register(body: RegisterUserRequest, db: AsyncSession = Depends(get_db)):
+async def register(
+    body: RegisterUserRequest,
+    db: AsyncSession = Depends(get_db),
+):
     try:
         user = await RegisterUser(PgUserRepository(db)).execute(
-            email=body.email, phone=body.phone,
-            password=body.password, full_name=body.full_name,
+            email=body.email,
+            phone=body.phone,
+            password=body.password,
+            full_name=body.full_name,
             rt_group_id=body.rt_group_id,
         )
         return {"id": str(user.id), "email": user.email, "status": user.status}
@@ -38,19 +69,29 @@ async def register(body: RegisterUserRequest, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=409, detail=e.message)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.message)
+    except IntegrityError as e:
+        # DB-level unique constraint violations not caught by app logic
+        # e.g. uq_users_phone when same phone is used twice
+        raise HTTPException(status_code=409, detail=_integrity_message(e))
 
 
-@router.post("/auth/login", response_model=TokenResponse, tags=["Auth"])
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/auth/login", tags=["Auth"])
+async def login(
+    body: LoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
     try:
-        return await LoginUser(PgUserRepository(db)).execute(
-            email=body.email, password=body.password,
+        result = await LoginUser(PgUserRepository(db)).execute(
+            email=body.email,
+            password=body.password,
         )
+        return result
     except UnauthorizedError as e:
         raise HTTPException(status_code=401, detail=e.message)
 
 
 # ── Users ─────────────────────────────────────────────────────────
+
 @router.get("/users/me", tags=["Users"])
 async def get_me(
     current_user: dict = Depends(get_current_user),
@@ -59,8 +100,14 @@ async def get_me(
     user = await PgUserRepository(db).get_by_id(UUID(current_user["user_id"]))
     if not user:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
-    return {"id": str(user.id), "email": user.email,
-            "full_name": user.full_name, "role": user.role, "status": user.status}
+    return {
+        "id":          str(user.id),
+        "email":       user.email,
+        "full_name":   user.full_name,
+        "role":        user.role,
+        "status":      user.status,
+        "rt_group_id": str(user.rt_group_id) if user.rt_group_id else None,
+    }
 
 
 @router.patch("/users/{user_id}/verify", tags=["Users"])
@@ -71,7 +118,8 @@ async def verify_user(
 ):
     try:
         user = await VerifyUser(PgUserRepository(db)).execute(
-            user_id=user_id, verified_by=UUID(current_user["user_id"])
+            user_id=user_id,
+            verified_by=UUID(current_user["user_id"]),
         )
         return {"id": str(user.id), "status": user.status}
     except EntityNotFoundError as e:
@@ -87,7 +135,8 @@ async def assign_role(
 ):
     try:
         user = await AssignRole(PgUserRepository(db)).execute(
-            target_user_id=user_id, role=role,
+            target_user_id=user_id,
+            role=role,
             assigned_by=UUID(current_user["user_id"]),
         )
         return {"id": str(user.id), "role": user.role}
@@ -96,20 +145,27 @@ async def assign_role(
 
 
 # ── RT Groups ─────────────────────────────────────────────────────
+
 @router.post("/rt-groups", status_code=201, tags=["RT Groups"])
 async def create_rt_group(
     body: CreateRTGroupRequest,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    rt = await CreateRTGroup(PgRTGroupRepository(db)).execute(
-        rt_number=body.rt_number, rw_number=body.rw_number,
-        kelurahan=body.kelurahan, kecamatan=body.kecamatan,
-        kota=body.kota, provinsi=body.provinsi,
-        admin_user_id=UUID(current_user["user_id"]),
-        monthly_fee_idr=body.monthly_fee_idr,
-    )
-    return {"id": str(rt.id), "display_name": rt.display_name}
+    try:
+        rt = await CreateRTGroup(PgRTGroupRepository(db)).execute(
+            rt_number=body.rt_number,
+            rw_number=body.rw_number,
+            kelurahan=body.kelurahan,
+            kecamatan=body.kecamatan,
+            kota=body.kota,
+            provinsi=body.provinsi,
+            admin_user_id=UUID(current_user["user_id"]),
+            monthly_fee_idr=body.monthly_fee_idr,
+        )
+        return {"id": str(rt.id), "display_name": rt.display_name}
+    except IntegrityError as e:
+        raise HTTPException(status_code=409, detail=_integrity_message(e))
 
 
 @router.get("/rt-groups/{rt_group_id}/members", tags=["RT Groups"])
@@ -119,5 +175,12 @@ async def get_rt_members(
     db: AsyncSession = Depends(get_db),
 ):
     users = await PgUserRepository(db).get_by_rt_group(rt_group_id)
-    return [{"id": str(u.id), "full_name": u.full_name,
-             "role": u.role, "status": u.status} for u in users]
+    return [
+        {
+            "id":        str(u.id),
+            "full_name": u.full_name,
+            "role":      u.role,
+            "status":    u.status,
+        }
+        for u in users
+    ]

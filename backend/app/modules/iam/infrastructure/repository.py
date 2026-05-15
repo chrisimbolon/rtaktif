@@ -1,6 +1,7 @@
-"""PostgreSQL implementations of IAM repositories."""
+"""PostgreSQL implementations of IAM repositories — updated for production schema."""
 from typing import Optional
 from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,11 +46,16 @@ class PgUserRepository(UserRepository):
             existing.rt_group_id      = entity.rt_group_id
         else:
             self.session.add(UserModel(
-                id=entity.id, email=entity.email, phone=entity.phone,
-                hashed_password=entity.hashed_password, full_name=entity.full_name,
-                role=entity.role.value, status=entity.status.value,
+                id=entity.id,
+                email=entity.email,
+                phone=entity.phone,
+                hashed_password=entity.hashed_password,
+                full_name=entity.full_name,
+                role=entity.role.value,
+                status=entity.status.value,
                 rt_group_id=entity.rt_group_id,
-                created_at=entity.created_at, updated_at=entity.updated_at,
+                created_at=entity.created_at,
+                updated_at=entity.updated_at,
             ))
         await self.session.flush()
         return entity
@@ -65,11 +71,16 @@ class PgUserRepository(UserRepository):
 
     def _to_entity(self, row: UserModel) -> User:
         return User(
-            id=row.id, email=row.email, phone=row.phone,
-            hashed_password=row.hashed_password, full_name=row.full_name,
-            role=UserRole(row.role), status=UserStatus(row.status),
+            id=row.id,
+            email=row.email,
+            phone=row.phone,
+            hashed_password=row.hashed_password,
+            full_name=row.full_name,
+            role=UserRole(row.role),
+            status=UserStatus(row.status),
             rt_group_id=row.rt_group_id,
-            created_at=row.created_at, updated_at=row.updated_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
 
 
@@ -92,14 +103,21 @@ class PgRTGroupRepository(RTGroupRepository):
         existing = await self.session.get(RTGroupModel, entity.id)
         if existing:
             existing.monthly_fee_idr = entity.monthly_fee_idr
+            existing.is_active       = True
         else:
             self.session.add(RTGroupModel(
-                id=entity.id, rt_number=entity.rt_number,
-                rw_number=entity.rw_number, kelurahan=entity.kelurahan,
-                kecamatan=entity.kecamatan, kota=entity.kota,
-                provinsi=entity.provinsi, admin_user_id=entity.admin_user_id,
+                id=entity.id,
+                rt_number=entity.rt_number,
+                rw_number=entity.rw_number,
+                kelurahan=entity.kelurahan,
+                kecamatan=entity.kecamatan,
+                kota=entity.kota,
+                provinsi=entity.provinsi,
+                admin_user_id=entity.admin_user_id,
                 monthly_fee_idr=entity.monthly_fee_idr,
-                created_at=entity.created_at, updated_at=entity.updated_at,
+                is_active=True,
+                created_at=entity.created_at,
+                updated_at=entity.updated_at,
             ))
         await self.session.flush()
         return entity
@@ -115,9 +133,15 @@ class PgRTGroupRepository(RTGroupRepository):
 
     def _to_entity(self, row: RTGroupModel) -> RTGroup:
         return RTGroup(
-            id=row.id, rt_number=row.rt_number, rw_number=row.rw_number,
-            kelurahan=row.kelurahan, kecamatan=row.kecamatan, kota=row.kota,
-            provinsi=row.provinsi, admin_user_id=row.admin_user_id,
+            id=row.id,
+            rt_number=row.rt_number,
+            rw_number=row.rw_number,
+            kelurahan=row.kelurahan,
+            kecamatan=row.kecamatan,
+            kota=row.kota,
+            provinsi=row.provinsi,
+            admin_user_id=row.admin_user_id,
             monthly_fee_idr=row.monthly_fee_idr,
-            created_at=row.created_at, updated_at=row.updated_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )

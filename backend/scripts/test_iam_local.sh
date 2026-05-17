@@ -4,7 +4,7 @@
 # Tests every auth + IAM endpoint against your local running API.
 #
 # Prerequisites:
-#   1. DB seeded:  python scripts/seed_dev.py
+#   1. DB seeded:   python scripts/seed_dev.py
 #   2. API running: uvicorn app.main:app --reload --port 8000
 #
 # Usage:
@@ -26,7 +26,7 @@ pass()        { echo -e "  ${GREEN}✓ $1${NC}"; PASS=$((PASS+1)); }
 fail()        { echo -e "  ${RED}✗ $1${NC}"; FAIL=$((FAIL+1)); }
 show_json()   { echo "$1" | python3 -m json.tool 2>/dev/null || echo "$1"; }
 
-# Check API is running
+# ── Check API is running ───────────────────────────────────────────
 check_api() {
   if ! curl -sf "http://localhost:8000/health" > /dev/null 2>&1; then
     echo -e "${RED}ERROR: API not running at $BASE${NC}"
@@ -35,27 +35,21 @@ check_api() {
   fi
 }
 
-# HTTP call with status code capture
+# ── HTTP helper ────────────────────────────────────────────────────
 call() {
   local method="$1" url="$2" data="${3:-}" token="${4:-}"
-  local headers=(-H "Content-Type: application/json")
-  [ -n "$token" ] && headers+=(-H "Authorization: Bearer $token")
-
-  if [ -n "$data" ]; then
-    curl -s -w "\n__STATUS__%{http_code}" -X "$method" "$BASE$url" \
-      "${headers[@]}" -d "$data"
-  else
-    curl -s -w "\n__STATUS__%{http_code}" -X "$method" "$BASE$url" \
-      "${headers[@]}"
-  fi
+  local args=(-s -w "\n__STATUS__%{http_code}" -X "$method" "$BASE$url"
+              -H "Content-Type: application/json")
+  [ -n "$token" ] && args+=(-H "Authorization: Bearer $token")
+  [ -n "$data"  ] && args+=(-d "$data")
+  curl "${args[@]}"
 }
 
-# Extract body + status
 get_body()   { echo "$1" | sed 's/__STATUS__[0-9]*//' | tr -d '\n'; }
 get_status() { echo "$1" | grep -o '__STATUS__[0-9]*' | grep -o '[0-9]*'; }
 get_field()  { echo "$1" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('$2',''))" 2>/dev/null; }
 
-# ═══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════
 echo -e "${BOLD}RukunRT IAM Local Test Suite${NC}"
 echo "API: $BASE"
 echo "$(date)"
@@ -63,6 +57,18 @@ echo "════════════════════════�
 
 check_api
 echo -e "${GREEN}✓ API is running${NC}"
+
+# ── Unique values for this run (prevents phone/email collisions) ───
+TS=$(date +%s)
+WARGA_EMAIL="warga_${TS}@rtaktif.id"
+SHORT_EMAIL="shortpass_${TS}@rtaktif.id"
+NAME_EMAIL="shortname_${TS}@rtaktif.id"
+# Phones: valid Indonesian format 08xx + last 8 digits of timestamp
+P1="0812${TS: -8}"
+P2="0813${TS: -8}"
+P3="0814${TS: -8}"
+P4="0815${TS: -8}"
+P5="0816${TS: -8}"
 
 
 # ── SECTION 1: Health ──────────────────────────────────────────────
@@ -79,69 +85,56 @@ show_json "$BODY" | sed 's/^/  /'
 # ── SECTION 2: Register ────────────────────────────────────────────
 log_section "2. User Registration"
 
-# 2a. Register new warga
-log_step "POST /auth/register — new warga (should succeed)"
-WARGA_EMAIL="warga_test_$(date +%s)@rtaktif.id"
-RES=$(call POST /auth/register "{
-  \"full_name\": \"Siti Warga Test\",
-  \"email\": \"$WARGA_EMAIL\",
-  \"phone\": \"081234567891\",
-  \"password\": \"warga123\"
-}")
+# 2a. Register new warga — unique email + unique phone each run
+log_step "POST /auth/register — new warga (should succeed, 201)"
+PAYLOAD=$(printf '{"full_name":"Siti Warga Test","email":"%s","phone":"%s","password":"warga123"}' "$WARGA_EMAIL" "$P1")
+RES=$(call POST /auth/register "$PAYLOAD")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
+echo "  Email: $WARGA_EMAIL  Phone: $P1"
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
-[ "$STATUS" = "201" ] && pass "Register warga → 201 Created" || fail "Register warga failed: $STATUS"
+[ "$STATUS" = "201" ] && pass "Register warga → 201 Created ✓" || fail "Register warga failed: $STATUS"
 WARGA_STATUS=$(get_field "$BODY" "status")
 [ "$WARGA_STATUS" = "pending" ] && pass "New user status = 'pending' ✓" || fail "Expected pending, got: $WARGA_STATUS"
 WARGA_ID=$(get_field "$BODY" "id")
 echo "  Warga ID: $WARGA_ID"
 
-# 2b. Duplicate email must fail
+# 2b. Duplicate email → 409
 log_step "POST /auth/register — duplicate email (should fail 409)"
-RES=$(call POST /auth/register "{
-  \"full_name\": \"Duplicate User\",
-  \"email\": \"$WARGA_EMAIL\",
-  \"phone\": \"081234567892\",
-  \"password\": \"pass123\"
-}")
+PAYLOAD=$(printf '{"full_name":"Duplicate","email":"%s","phone":"%s","password":"pass123"}' "$WARGA_EMAIL" "$P2")
+RES=$(call POST /auth/register "$PAYLOAD")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "409" ] && pass "Duplicate email → 409 Conflict ✓" || fail "Expected 409, got: $STATUS"
 
-# 2c. Invalid email format
+# 2c. Duplicate phone → 409
+log_step "POST /auth/register — duplicate phone (should fail 409)"
+PAYLOAD=$(printf '{"full_name":"Phone Dup","email":"phonedupe_%s@rtaktif.id","phone":"%s","password":"pass123"}' "$TS" "$P1")
+RES=$(call POST /auth/register "$PAYLOAD")
+STATUS=$(get_status "$RES")
+echo "  Status: $STATUS"
+[ "$STATUS" = "409" ] && pass "Duplicate phone → 409 Conflict ✓" || fail "Expected 409, got: $STATUS"
+
+# 2d. Invalid email format → 422
 log_step "POST /auth/register — invalid email (should fail 422)"
-RES=$(call POST /auth/register "{
-  \"full_name\": \"Bad Email\",
-  \"email\": \"not-an-email\",
-  \"phone\": \"081234567893\",
-  \"password\": \"pass123\"
-}")
+PAYLOAD=$(printf '{"full_name":"Bad Email","email":"not-an-email","phone":"%s","password":"pass123"}' "$P3")
+RES=$(call POST /auth/register "$PAYLOAD")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "422" ] && pass "Invalid email → 422 Unprocessable ✓" || fail "Expected 422, got: $STATUS"
 
-# 2d. Short password (use unique email to avoid 409 masking the 422)
+# 2e. Short password → 422
 log_step "POST /auth/register — short password (should fail 422)"
-SHORT_EMAIL="shortpass_$(date +%s)@rtaktif.id"
-RES=$(call POST /auth/register "{
-  \"full_name\": \"Short Pass\",
-  \"email\": \"$SHORT_EMAIL\",
-  \"phone\": \"081234567894\",
-  \"password\": \"123\"
-}")
+PAYLOAD=$(printf '{"full_name":"Short Pass","email":"%s","phone":"%s","password":"123"}' "$SHORT_EMAIL" "$P4")
+RES=$(call POST /auth/register "$PAYLOAD")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "422" ] && pass "Short password → 422 Unprocessable ✓" || fail "Expected 422, got: $STATUS"
 
-# 2e. Short full_name (should fail 422)
+# 2f. Short full_name → 422
 log_step "POST /auth/register — short full_name (should fail 422)"
-RES=$(call POST /auth/register "{
-  \"full_name\": \"AB\",
-  \"email\": \"shortname_$(date +%s)@rtaktif.id\",
-  \"phone\": \"081234567895\",
-  \"password\": \"validpass123\"
-}")
+PAYLOAD=$(printf '{"full_name":"AB","email":"%s","phone":"%s","password":"validpass123"}' "$NAME_EMAIL" "$P5")
+RES=$(call POST /auth/register "$PAYLOAD")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "422" ] && pass "Short full_name → 422 Unprocessable ✓" || fail "Expected 422, got: $STATUS"
@@ -151,24 +144,19 @@ echo "  Status: $STATUS"
 log_section "3. Login — Pending User (must be blocked)"
 
 log_step "POST /auth/login — pending user (should fail 401)"
-RES=$(call POST /auth/login "{
-  \"email\": \"$WARGA_EMAIL\",
-  \"password\": \"warga123\"
-}")
+PAYLOAD=$(printf '{"email":"%s","password":"warga123"}' "$WARGA_EMAIL")
+RES=$(call POST /auth/login "$PAYLOAD")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
-[ "$STATUS" = "401" ] && pass "Pending user login → 401 Unauthorized ✓" || fail "Expected 401, got: $STATUS"
+[ "$STATUS" = "401" ] && pass "Pending user blocked → 401 ✓" || fail "Expected 401, got: $STATUS"
 
 
-# ── SECTION 4: Admin login ─────────────────────────────────────────
+# ── SECTION 4: Admin Login ─────────────────────────────────────────
 log_section "4. Admin Login (seeded account)"
 
-log_step "POST /auth/login — admin@rukunrt.id (should succeed)"
-RES=$(call POST /auth/login "{
-  \"email\": \"admin@rukunrt.id\",
-  \"password\": \"admin123\"
-}")
+log_step "POST /auth/login — admin@rukunrt.id (should succeed 200)"
+RES=$(call POST /auth/login '{"email":"admin@rukunrt.id","password":"admin123"}')
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
@@ -181,138 +169,134 @@ echo "  Token (first 60 chars): ${ADMIN_TOKEN:0:60}..."
 # ── SECTION 5: JWT Decode ──────────────────────────────────────────
 log_section "5. JWT Token Verification"
 
-log_step "Decode JWT payload (without signature verification)"
-PAYLOAD=$(echo "$ADMIN_TOKEN" | cut -d'.' -f2)
-# Add padding
-PADDED="${PAYLOAD}$(python3 -c "print('='*((4-len('$PAYLOAD')%4)%4))")"
-DECODED=$(echo "$PADDED" | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null)
+log_step "Decode JWT payload (no signature check)"
+PAYLOAD_B64=$(echo "$ADMIN_TOKEN" | cut -d'.' -f2)
+PAD=$((4 - ${#PAYLOAD_B64} % 4))
+[ $PAD -ne 4 ] && PAYLOAD_B64="${PAYLOAD_B64}$(python3 -c "print('='*$PAD)")"
+DECODED=$(echo "$PAYLOAD_B64" | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "{}")
 echo "  JWT Payload:"
-echo "$DECODED" | sed 's/^/  /'
+echo "$DECODED" | sed 's/^/    /'
 
-# Verify fields
-JWT_ROLE=$(echo "$DECODED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('role',''))" 2>/dev/null)
-JWT_SUB=$(echo "$DECODED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sub',''))" 2>/dev/null)
-JWT_EXP=$(echo "$DECODED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('exp',''))" 2>/dev/null)
+JWT_SUB=$(echo "$DECODED"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sub',''))"  2>/dev/null || echo "")
+JWT_ROLE=$(echo "$DECODED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('role',''))" 2>/dev/null || echo "")
+JWT_EXP=$(echo "$DECODED"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('exp',''))"  2>/dev/null || echo "")
 
-[ -n "$JWT_SUB" ]  && pass "JWT contains 'sub' (user_id) ✓" || fail "JWT missing 'sub'"
-[ -n "$JWT_ROLE" ] && pass "JWT contains 'role' = $JWT_ROLE ✓" || fail "JWT missing 'role'"
-[ -n "$JWT_EXP" ]  && pass "JWT contains 'exp' (expiry) ✓" || fail "JWT missing 'exp'"
+[ -n "$JWT_SUB"  ] && pass "JWT has 'sub' (user_id) = ${JWT_SUB:0:8}... ✓"  || fail "JWT missing 'sub'"
+[ -n "$JWT_ROLE" ] && pass "JWT has 'role' = $JWT_ROLE ✓"                    || fail "JWT missing 'role'"
+[ -n "$JWT_EXP"  ] && pass "JWT has 'exp' (expiry) ✓"                        || fail "JWT missing 'exp'"
 
-# Check expiry is in the future
 NOW=$(date +%s)
-[ "$JWT_EXP" -gt "$NOW" ] && pass "JWT not expired (exp=$(date -d @$JWT_EXP 2>/dev/null || date -r $JWT_EXP)) ✓" \
-                           || fail "JWT already expired!"
+if [ -n "$JWT_EXP" ] && [ "$JWT_EXP" -gt "$NOW" ] 2>/dev/null; then
+  EXPIRY=$(python3 -c "from datetime import datetime,timezone; print(datetime.fromtimestamp($JWT_EXP, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))" 2>/dev/null || echo "$JWT_EXP")
+  pass "JWT not expired (expires: $EXPIRY) ✓"
+else
+  fail "JWT expired or exp missing!"
+fi
 
 
 # ── SECTION 6: Protected Routes ────────────────────────────────────
 log_section "6. Protected Routes"
 
-# 6a. GET /users/me with valid token
-log_step "GET /users/me — valid admin token (should succeed)"
+# 6a. Valid token
+log_step "GET /users/me — valid admin token (should succeed 200)"
 RES=$(call GET /users/me "" "$ADMIN_TOKEN")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
 [ "$STATUS" = "200" ] && pass "GET /users/me → 200 OK ✓" || fail "GET /users/me failed: $STATUS"
 ME_ROLE=$(get_field "$BODY" "role")
-[ "$ME_ROLE" = "admin_rt" ] && pass "User role = admin_rt ✓" || fail "Expected admin_rt, got: $ME_ROLE"
+[ "$ME_ROLE" = "admin_rt" ] && pass "Role = admin_rt ✓" || fail "Expected admin_rt, got: $ME_ROLE"
 ME_STATUS=$(get_field "$BODY" "status")
-[ "$ME_STATUS" = "active" ] && pass "User status = active ✓" || fail "Expected active, got: $ME_STATUS"
+[ "$ME_STATUS" = "active" ] && pass "Status = active ✓" || fail "Expected active, got: $ME_STATUS"
 
-# 6b. GET /users/me with NO token
+# 6b. No token
 log_step "GET /users/me — no token (should fail 403)"
-RES=$(curl -s -w "\n__STATUS__%{http_code}" -X GET "$BASE/users/me")
+RES=$(curl -s -w "\n__STATUS__%{http_code}" "$BASE/users/me")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "403" ] && pass "No token → 403 Forbidden ✓" || fail "Expected 403, got: $STATUS"
 
-# 6c. GET /users/me with INVALID token
-log_step "GET /users/me — garbage token (should fail 403/401)"
-RES=$(curl -s -w "\n__STATUS__%{http_code}" -X GET "$BASE/users/me" \
-  -H "Authorization: Bearer this.is.garbage")
+# 6c. Invalid token
+log_step "GET /users/me — garbage token (should fail 401/403)"
+RES=$(curl -s -w "\n__STATUS__%{http_code}" "$BASE/users/me" -H "Authorization: Bearer garbage.token.here")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
-[ "$STATUS" = "401" ] || [ "$STATUS" = "403" ] && pass "Invalid token → $STATUS ✓" || fail "Expected 401/403, got: $STATUS"
+{ [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; } && pass "Garbage token → $STATUS ✓" || fail "Expected 401/403, got: $STATUS"
 
 
 # ── SECTION 7: Verify Pending Warga ───────────────────────────────
 log_section "7. Admin Verifies Pending Warga"
 
-log_step "PATCH /users/$WARGA_ID/verify — admin token (should succeed)"
+log_step "PATCH /users/$WARGA_ID/verify — admin token (should succeed 200)"
 RES=$(call PATCH "/users/$WARGA_ID/verify" "" "$ADMIN_TOKEN")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
 [ "$STATUS" = "200" ] && pass "Verify user → 200 OK ✓" || fail "Verify user failed: $STATUS"
 NEW_STATUS=$(get_field "$BODY" "status")
-[ "$NEW_STATUS" = "active" ] && pass "User status changed to 'active' ✓" || fail "Expected active, got: $NEW_STATUS"
+[ "$NEW_STATUS" = "active" ] && pass "Status changed → 'active' ✓" || fail "Expected active, got: $NEW_STATUS"
 
 
-# ── SECTION 8: Verified Warga Can Now Login ────────────────────────
+# ── SECTION 8: Verified Warga Can Login ───────────────────────────
 log_section "8. Verified Warga Login"
 
-log_step "POST /auth/login — now verified warga (should succeed)"
-RES=$(call POST /auth/login "{
-  \"email\": \"$WARGA_EMAIL\",
-  \"password\": \"warga123\"
-}")
+log_step "POST /auth/login — verified warga (should succeed 200)"
+PAYLOAD=$(printf '{"email":"%s","password":"warga123"}' "$WARGA_EMAIL")
+RES=$(call POST /auth/login "$PAYLOAD")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
 [ "$STATUS" = "200" ] && pass "Verified warga login → 200 OK ✓" || fail "Warga login failed: $STATUS"
 WARGA_TOKEN=$(get_field "$BODY" "access_token")
-[ -n "$WARGA_TOKEN" ] && pass "Warga JWT token received ✓" || fail "No token for warga"
+[ -n "$WARGA_TOKEN" ] && pass "Warga JWT received ✓" || fail "No token for warga"
 
 
-# ── SECTION 9: Role Guards ─────────────────────────────────────────
+# ── SECTION 9: Role Guards (RBAC) ─────────────────────────────────
 log_section "9. Role-Based Access Control"
 
-# 9a. Warga hits admin-only endpoint
-log_step "GET /warga/rt/... — warga token hits admin endpoint (should fail 403)"
-FAKE_RT_ID="00000000-0000-0000-0000-000000000001"
-RES=$(call GET "/warga/rt/$FAKE_RT_ID" "" "$WARGA_TOKEN")
+FAKE_RT="00000000-0000-0000-0000-000000000001"
+
+log_step "GET /warga/rt/{id} — warga token on admin endpoint (should fail 403)"
+RES=$(call GET "/warga/rt/$FAKE_RT" "" "$WARGA_TOKEN")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
-[ "$STATUS" = "403" ] && pass "Warga token on admin endpoint → 403 Forbidden ✓" || fail "Expected 403, got: $STATUS"
+[ "$STATUS" = "403" ] && pass "Warga on admin endpoint → 403 ✓" || fail "Expected 403, got: $STATUS"
 
-# 9b. Warga tries to generate invoices
 log_step "POST /tagihan/generate-bulk — warga token (should fail 403)"
-RES=$(call POST /tagihan/generate-bulk "{
-  \"rt_group_id\": \"$FAKE_RT_ID\",
-  \"year\": 2026, \"month\": 5, \"amount_idr\": 30000
-}" "$WARGA_TOKEN")
+PAYLOAD=$(printf '{"rt_group_id":"%s","year":2026,"month":5,"amount_idr":30000}' "$FAKE_RT")
+RES=$(call POST /tagihan/generate-bulk "$PAYLOAD" "$WARGA_TOKEN")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "403" ] && pass "Warga cannot generate invoices → 403 ✓" || fail "Expected 403, got: $STATUS"
 
-# 9c. Warga tries to verify another user
 log_step "PATCH /users/{id}/verify — warga token (should fail 403)"
 RES=$(call PATCH "/users/$WARGA_ID/verify" "" "$WARGA_TOKEN")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "403" ] && pass "Warga cannot verify users → 403 ✓" || fail "Expected 403, got: $STATUS"
 
+log_step "POST /komunikasi/announcements — warga token (should fail 403)"
+PAYLOAD=$(printf '{"rt_group_id":"%s","title":"Hacked","body":"Unauthorized","ann_type":"info","channel":"app"}' "$FAKE_RT")
+RES=$(call POST /komunikasi/announcements "$PAYLOAD" "$WARGA_TOKEN")
+STATUS=$(get_status "$RES")
+echo "  Status: $STATUS"
+[ "$STATUS" = "403" ] && pass "Warga cannot create announcements → 403 ✓" || fail "Expected 403, got: $STATUS"
 
-# ── SECTION 10: Wrong Password ─────────────────────────────────────
-log_section "10. Wrong Password"
+
+# ── SECTION 10: Wrong Credentials ─────────────────────────────────
+log_section "10. Wrong Credentials"
 
 log_step "POST /auth/login — wrong password (should fail 401)"
-RES=$(call POST /auth/login "{
-  \"email\": \"admin@rukunrt.id\",
-  \"password\": \"wrongpassword\"
-}")
+RES=$(call POST /auth/login '{"email":"admin@rukunrt.id","password":"wrongpassword"}')
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
-[ "$STATUS" = "401" ] && pass "Wrong password → 401 Unauthorized ✓" || fail "Expected 401, got: $STATUS"
+[ "$STATUS" = "401" ] && pass "Wrong password → 401 ✓" || fail "Expected 401, got: $STATUS"
 
 log_step "POST /auth/login — nonexistent email (should fail 401)"
-RES=$(call POST /auth/login "{
-  \"email\": \"ghost@nowhere.com\",
-  \"password\": \"pass123\"
-}")
+RES=$(call POST /auth/login '{"email":"ghost@nowhere.com","password":"pass123"}')
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
-[ "$STATUS" = "401" ] && pass "Nonexistent email → 401 Unauthorized ✓" || fail "Expected 401, got: $STATUS"
+[ "$STATUS" = "401" ] && pass "Nonexistent email → 401 ✓" || fail "Expected 401, got: $STATUS"
 
 
 # ── SECTION 11: Assign Role ────────────────────────────────────────
@@ -323,74 +307,70 @@ RES=$(call PATCH "/users/$WARGA_ID/role?role=admin_rt" "" "$ADMIN_TOKEN")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
-[ "$STATUS" = "200" ] && pass "Assign role → 200 OK ✓" || fail "Assign role failed: $STATUS"
+[ "$STATUS" = "200" ] && pass "Assign role admin_rt → 200 ✓" || fail "Assign role failed: $STATUS"
+
+log_step "PATCH /users/$WARGA_ID/role — warga token (should fail 403)"
+RES=$(call PATCH "/users/$WARGA_ID/role?role=warga" "" "$WARGA_TOKEN")
+STATUS=$(get_status "$RES")
+echo "  Status: $STATUS"
+[ "$STATUS" = "403" ] && pass "Warga cannot assign roles → 403 ✓" || fail "Expected 403, got: $STATUS"
 
 
 # ── SECTION 12: RT Group ───────────────────────────────────────────
 log_section "12. RT Group Operations"
 
-log_step "POST /rt-groups — create RT group (admin only)"
-RES=$(call POST /rt-groups "{
-  \"rt_number\": \"05\",
-  \"rw_number\": \"02\",
-  \"kelurahan\": \"Padang Harapan\",
-  \"kecamatan\": \"Gading Cempaka\",
-  \"kota\": \"Bengkulu\",
-  \"provinsi\": \"Bengkulu\",
-  \"monthly_fee_idr\": 30000
-}" "$ADMIN_TOKEN")
+log_step "POST /rt-groups — admin token (201 or 409 if exists)"
+RES=$(call POST /rt-groups \
+  '{"rt_number":"05","rw_number":"02","kelurahan":"Padang Harapan","kecamatan":"Gading Cempaka","kota":"Bengkulu","provinsi":"Bengkulu","monthly_fee_idr":30000}' \
+  "$ADMIN_TOKEN")
 BODY=$(get_body "$RES"); STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 show_json "$BODY" | sed 's/^/  /'
-# 201 = created, 409 = already exists from seed (both ok)
-[ "$STATUS" = "201" ] || [ "$STATUS" = "409" ] && \
-  pass "Create RT group → $STATUS ✓" || fail "Create RT group failed: $STATUS"
+{ [ "$STATUS" = "201" ] || [ "$STATUS" = "409" ]; } && pass "Create RT group → $STATUS ✓" || fail "Unexpected status: $STATUS"
 
 log_step "POST /rt-groups — warga token (should fail 403)"
-RES=$(call POST /rt-groups "{
-  \"rt_number\": \"99\",
-  \"rw_number\": \"99\",
-  \"kelurahan\": \"Test\",
-  \"kecamatan\": \"Test\",
-  \"kota\": \"Test\",
-  \"provinsi\": \"Test\",
-  \"monthly_fee_idr\": 30000
-}" "$WARGA_TOKEN")
+RES=$(call POST /rt-groups \
+  '{"rt_number":"99","rw_number":"99","kelurahan":"X","kecamatan":"X","kota":"X","provinsi":"X","monthly_fee_idr":30000}' \
+  "$WARGA_TOKEN")
 STATUS=$(get_status "$RES")
 echo "  Status: $STATUS"
 [ "$STATUS" = "403" ] && pass "Warga cannot create RT group → 403 ✓" || fail "Expected 403, got: $STATUS"
 
 
-# ── SECTION 13: DB State After Tests ──────────────────────────────
+# ── SECTION 13: DB State ──────────────────────────────────────────
 log_section "13. Database State After Tests"
 
-echo "  Running final DB row counts..."
-python3 -c "
+DB_URL="${DATABASE_URL:-}"
+if [ -n "$DB_URL" ]; then
+  python3 -c "
 import asyncio, asyncpg, os
 
 async def counts():
-    url = os.environ.get('DATABASE_URL','').replace('+asyncpg','')
+    url = os.environ['DATABASE_URL'].replace('+asyncpg','')
     conn = await asyncpg.connect(url)
     tables = ['users','residents','rt_groups','invoices','payments',
               'announcements','laporan_warga','notification_logs']
     for t in tables:
-        count = await conn.fetchval(f'SELECT COUNT(*) FROM {t}')
-        print(f'  📊 {t:<25} {count} rows')
+        n = await conn.fetchval(f'SELECT COUNT(*) FROM {t}')
+        print(f'  📊 {t:<25} {n} rows')
     await conn.close()
 
 asyncio.run(counts())
-" 2>/dev/null || echo "  (set DATABASE_URL to see counts)"
+" 2>/dev/null || echo "  (could not connect)"
+else
+  echo "  (export DATABASE_URL to see row counts)"
+fi
 
 
-# ── SUMMARY ────────────────────────────────────────────────────────
+# ── SUMMARY ───────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════"
-printf "${BOLD}Results: ${GREEN}%d passed${NC} / ${RED}%d failed${NC}\n" $PASS $FAIL
+printf "${BOLD}Results: ${GREEN}%d passed${NC} / ${RED}%d failed${NC}\n" "$PASS" "$FAIL"
 echo ""
 
-if [ $FAIL -eq 0 ]; then
+if [ "$FAIL" -eq 0 ]; then
   echo -e "${GREEN}${BOLD}🎉 ALL IAM TESTS PASSED!"
-  echo -e "Your auth system is solid mate. Ready for DigitalOcean! 🚀${NC}"
+  echo -e "Auth system is solid mate. Ready for DigitalOcean! 🚀${NC}"
 else
   echo -e "${RED}${BOLD}❌ $FAIL test(s) failed — check output above${NC}"
   echo ""

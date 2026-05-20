@@ -1,109 +1,71 @@
-// // lib/hooks/useAuth.ts
+// lib/hooks/useAuth.ts — auth from NextAuth ONLY, no Zustand
 "use client";
-
 import type { LoginPayload } from "@/types";
 import { useMutation } from "@tanstack/react-query";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin"];
 
 export function useAuth() {
-  const router = useRouter();
   const { data: session, status } = useSession();
+  const router = useRouter();
 
-  const user = session?.user ?? null;
-  const token = session?.backendToken ?? null;
+  // ── Derived state directly from NextAuth session ──────────────
+  const user      = session?.user      ?? null;
+  const token     = session?.backendToken ?? null;
+  const isLoading = status === "loading";
+  const isAdmin   = () => ADMIN_ROLES.includes(user?.role ?? "");
+  const isWarga   = () => user?.role === "warga";
 
+  // ── Login ──────────────────────────────────────────────────────
   const loginMutation = useMutation({
     mutationFn: async (payload: LoginPayload) => {
       const result = await signIn("credentials", {
-        email: payload.email,
+        email:    payload.email,
         password: payload.password,
         redirect: false,
       });
 
-      if (!result || result.error) {
-        throw new Error("Login failed");
+      if (result?.error) {
+        const errorMap: Record<string, string> = {
+          CredentialsSignin: "Email atau password salah",
+          AccountPending:    "Akun belum diverifikasi admin RT",
+          AccountSuspended:  "Akun Anda telah disuspend",
+          Default:           "Terjadi kesalahan. Silakan coba lagi",
+        };
+        throw new Error(errorMap[result.error] ?? errorMap.Default);
       }
-
       return result;
     },
-
     onSuccess: async () => {
-      // small delay so session hydrates properly
-      await new Promise((r) => setTimeout(r, 100));
+      // Wait briefly for session cookie to be set
+      await new Promise((r) => setTimeout(r, 200));
 
-      const currentRole = session?.user?.role;
+      // Fetch fresh session → route by role
+      const res  = await fetch("/api/auth/session");
+      const data = await res.json();
+      const role = data?.user?.role ?? "";
 
-      if (ADMIN_ROLES.includes(currentRole ?? "")) {
+      if (ADMIN_ROLES.includes(role)) {
         router.push("/dashboard");
       } else {
         router.push("/beranda");
       }
-
       router.refresh();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
 
+  // ── Logout ─────────────────────────────────────────────────────
   const logout = async () => {
-    await signOut({
-      redirect: true,
-      callbackUrl: "/login",
-    });
+    await signOut({ redirect: false });
+    router.push("/login");
+    toast.success("Sampai jumpa! 👋");
   };
 
-  return {
-    user,
-    token,
-    status,
-    loginMutation,
-    logout,
-
-    isAdmin:
-      !!user && ADMIN_ROLES.includes(user.role),
-
-    isWarga:
-      user?.role === "warga",
-  };
+  return { user, token, session, status, isLoading, isAdmin, isWarga, loginMutation, logout };
 }
-
-// "use client";
-// import { authApi } from "@/lib/api/auth";
-// import { useAuthStore } from "@/store/auth.store";
-// import type { LoginPayload } from "@/types";
-// import { useMutation } from "@tanstack/react-query";
-// import { useRouter } from "next/navigation";
-
-// export function useAuth() {
-//   const { user, token, setAuth, clearAuth, isAdmin, isWarga } = useAuthStore();
-//   const router = useRouter();
-
-//   const loginMutation = useMutation({
-//     mutationFn: async (payload: LoginPayload) => {
-//       const tokenRes = await authApi.login(payload);
-//       // Store token first so apiClient picks it up
-//       if (typeof window !== "undefined") {
-//         localStorage.setItem("rukunrt_token", tokenRes.access_token);
-//       }
-//       const me = await authApi.me();
-//       return { token: tokenRes.access_token, user: me };
-//     },
-//     onSuccess: ({ token, user }) => {
-//       setAuth(user, token);
-//       // Route based on role
-//       if (["admin_rt", "admin_rw", "super_admin"].includes(user.role)) {
-//         router.push("/dashboard");
-//       } else {
-//         router.push("/beranda");
-//       }
-//     },
-//   });
-
-//   const logout = () => {
-//     clearAuth();
-//     router.push("/login");
-//   };
-
-//   return { user, token, isAdmin, isWarga, loginMutation, logout };
-// }

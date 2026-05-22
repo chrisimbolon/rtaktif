@@ -1,4 +1,5 @@
 // lib/api/client.ts
+// Replace your current client.ts with this —
 // reads JWT from NextAuth session instead of localStorage
 import axios, { type InternalAxiosRequestConfig } from "axios";
 import { getSession, signOut } from "next-auth/react";

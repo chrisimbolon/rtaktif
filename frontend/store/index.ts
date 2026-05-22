@@ -1,2 +1,4 @@
-export { useAuthStore } from "./auth.store";
-export { useRTStore }   from "./rt.store";
+// store/index.ts
+// auth state lives in NextAuth session — NOT in Zustand
+// Zustand is for UI state only
+export { useRTStore } from "./rt.store";

@@ -1,4 +1,8 @@
-// lib/hooks/useAuth.ts — auth from NextAuth ONLY, no Zustand
+// lib/hooks/useAuth.ts
+// All NextAuth augmented fields (full_name, role, status) are accessed
+// via (session as any) ONCE here, then exposed as plain typed strings.
+// This prevents TypeScript errors in Docker build where next-auth.d.ts
+// augmentation may not be resolved.
 "use client";
 import type { LoginPayload } from "@/types";
 import { useMutation } from "@tanstack/react-query";
@@ -12,12 +16,30 @@ export function useAuth() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // ── Derived state directly from NextAuth session ──────────────
-  const user      = session?.user      ?? null;
-  const token     = session?.backendToken ?? null;
+  // Cast session to any ONCE here — extracts all augmented fields safely
+  const s = session as any;
+
   const isLoading = status === "loading";
-  const isAdmin   = () => ADMIN_ROLES.includes(user?.role ?? "");
-  const isWarga   = () => user?.role === "warga";
+  const token     = s?.backendToken  as string | undefined;
+  const fullName  = s?.user?.full_name as string | undefined;
+  const role      = s?.user?.role     as string | undefined;
+  const userStatus = s?.user?.status  as string | undefined;
+  const rtGroupId = s?.user?.rt_group_id as string | null | undefined;
+  const userId    = s?.user?.id       as string | undefined;
+  const email     = s?.user?.email    as string | undefined;
+
+  // Expose a plain user object — no NextAuth type dependency
+  const user = session ? {
+    id:          userId    ?? "",
+    email:       email     ?? "",
+    full_name:   fullName  ?? "",
+    role:        role      ?? "",
+    status:      userStatus ?? "",
+    rt_group_id: rtGroupId ?? null,
+  } : null;
+
+  const isAdmin = () => ADMIN_ROLES.includes(role ?? "");
+  const isWarga = () => role === "warga";
 
   // ── Login ──────────────────────────────────────────────────────
   const loginMutation = useMutation({
@@ -27,7 +49,6 @@ export function useAuth() {
         password: payload.password,
         redirect: false,
       });
-
       if (result?.error) {
         const errorMap: Record<string, string> = {
           CredentialsSignin: "Email atau password salah",
@@ -40,24 +61,14 @@ export function useAuth() {
       return result;
     },
     onSuccess: async () => {
-      // Wait briefly for session cookie to be set
       await new Promise((r) => setTimeout(r, 200));
-
-      // Fetch fresh session → route by role
-      const res  = await fetch("/api/auth/session");
-      const data = await res.json();
-      const role = data?.user?.role ?? "";
-
-      if (ADMIN_ROLES.includes(role)) {
-        router.push("/dashboard");
-      } else {
-        router.push("/beranda");
-      }
+      const res        = await fetch("/api/auth/session");
+      const data       = await res.json() as any;
+      const sessionRole = data?.user?.role as string ?? "";
+      router.push(ADMIN_ROLES.includes(sessionRole) ? "/dashboard" : "/beranda");
       router.refresh();
     },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   // ── Logout ─────────────────────────────────────────────────────
@@ -67,5 +78,23 @@ export function useAuth() {
     toast.success("Sampai jumpa! 👋");
   };
 
-  return { user, token, session, status, isLoading, isAdmin, isWarga, loginMutation, logout };
+  return {
+    // Plain typed user object — safe to use in all components
+    user,
+    // Individual fields for convenience
+    token,
+    fullName,
+    role,
+    userStatus,
+    rtGroupId,
+    // Status
+    status,
+    isLoading,
+    // Helpers
+    isAdmin,
+    isWarga,
+    // Actions
+    loginMutation,
+    logout,
+  };
 }

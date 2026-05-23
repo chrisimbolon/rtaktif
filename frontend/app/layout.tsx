@@ -4,7 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: { default: "RukunRT", template: "%s | RukunRT" },
+  title: { default: "RTMudah", template: "%s | RTMudah" },
   description: "Sistem Manajemen RT/RW — Digital & Transparan",
   icons: { icon: "/favicon.ico" },
 };

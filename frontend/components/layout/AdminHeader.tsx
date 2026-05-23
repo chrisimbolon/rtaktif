@@ -1,7 +1,7 @@
 // components/layout/AdminHeader.tsx
 "use client";
-import { useAuth } from "@/lib/hooks/useAuth";
 import { Bell, Search } from "lucide-react";
+import { useAuth }       from "@/lib/hooks/useAuth";
 
 interface AdminHeaderProps {
   title:     string;
@@ -9,11 +9,12 @@ interface AdminHeaderProps {
 }
 
 export function AdminHeader({ title, subtitle }: AdminHeaderProps) {
-  const { user } = useAuth();
+  const { fullName } = useAuth();
 
-  const initials = user?.full_name
-    ? user.full_name.split(" ").slice(0, 2).map((n: string) => n[0]).join("").toUpperCase()
-    : "A";
+  const initials = (fullName ?? "A")
+    .split(" ").slice(0, 2)
+    .map((n: string) => n[0])
+    .join("").toUpperCase();
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between flex-shrink-0">

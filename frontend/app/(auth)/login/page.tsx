@@ -42,7 +42,7 @@ export default function LoginPage() {
           <div className="w-10 h-10 rounded-xl bg-terra-500 flex items-center justify-center flex-shrink-0">
             <span className="font-display font-black text-white">RT</span>
           </div>
-          <span className="font-display font-bold text-cream-100 text-xl">RukunRT</span>
+          <span className="font-display font-bold text-cream-100 text-xl">RTMudah</span>
         </div>
         <p className="text-forest-200 text-sm">Sistem Manajemen RT/RW Digital</p>
       </div>
@@ -75,7 +75,7 @@ export default function LoginPage() {
               {...register("email")}
               type="email"
               autoComplete="email"
-              placeholder="admin@rukunrt.id"
+              placeholder="admin@rtmudah.com"
               className="w-full px-4 py-2.5 rounded-lg border border-cream-300 bg-cream-100 text-charcoal-900 placeholder:text-charcoal-400 text-sm focus:outline-none focus:ring-2 focus:ring-forest-500/30 focus:border-forest-500 transition"
             />
             {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}

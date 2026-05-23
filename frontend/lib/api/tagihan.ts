@@ -1,19 +1,40 @@
-import apiClient from "./client";
+// lib/api/tagihan.ts
 import type { Invoice } from "@/types";
+import apiClient from "./client";
 
 export const tagihanApi = {
-  generateBulk: (data: { rt_group_id: string; year: number; month: number; amount_idr: number }) =>
-    apiClient.post<{ invoices_created: number }>("/tagihan/generate-bulk", data).then((r) => r.data),
+  // Get invoices by period
+  byPeriod: async (rtGroupId: string, year: number, month: number): Promise<Invoice[]> => {
+    const res = await apiClient.get(`/tagihan/rt/${rtGroupId}`, { params: { year, month } });
+    return res.data;
+  },
 
-  byPeriod: (rtGroupId: string, year: number, month: number) =>
-    apiClient.get<Invoice[]>(`/tagihan/rt/${rtGroupId}`, { params: { year, month } }).then((r) => r.data),
+  // Get all unpaid invoices for an RT
+  unpaid: async (rtGroupId: string): Promise<Invoice[]> => {
+    const res = await apiClient.get(`/tagihan/unpaid/${rtGroupId}`);
+    return res.data;
+  },
 
-  unpaid: (rtGroupId: string) =>
-    apiClient.get<Invoice[]>(`/tagihan/unpaid/${rtGroupId}`).then((r) => r.data),
+  // Generate bulk invoices for all active residents
+  generateBulk: async (data: {
+    rt_group_id: string; year: number; month: number; amount_idr: number;
+  }): Promise<{ invoices_created: number }> => {
+    const res = await apiClient.post("/tagihan/generate-bulk", data);
+    return res.data;
+  },
 
-  confirmPayment: (id: string, data: { method: string; bukti_url?: string }) =>
-    apiClient.patch<{ id: string; status: string }>(`/tagihan/${id}/confirm-payment`, data).then((r) => r.data),
+  // Confirm a payment
+  confirmPayment: async (
+    invoiceId: string,
+    data: { method: string; bukti_url?: string }
+  ): Promise<Invoice> => {
+    const res = await apiClient.patch(`/tagihan/${invoiceId}/confirm-payment`, data);
+    return res.data;
+  },
 
-  markOverdue: (rtGroupId: string) =>
-    apiClient.post<{ marked_overdue: number }>(`/tagihan/mark-overdue/${rtGroupId}`).then((r) => r.data),
+  // Mark overdue invoices
+  markOverdue: async (rtGroupId: string): Promise<{ marked_overdue: number }> => {
+    const res = await apiClient.post(`/tagihan/mark-overdue/${rtGroupId}`);
+    return res.data;
+  },
 };

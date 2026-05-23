@@ -1,18 +1,30 @@
-import apiClient from "./client";
+// lib/api/warga.ts
 import type { Resident } from "@/types";
+import apiClient from "./client";
 
 export const wargaApi = {
-  list: (rtGroupId: string, statusFilter?: string) =>
-    apiClient
-      .get<Resident[]>(`/warga/rt/${rtGroupId}`, { params: { status_filter: statusFilter } })
-      .then((r) => r.data),
+  // List all residents for an RT group
+  list: async (rtGroupId: string, status?: string): Promise<Resident[]> => {
+    const params = status ? { status } : {};
+    const res = await apiClient.get(`/warga/rt/${rtGroupId}`, { params });
+    return res.data;
+  },
 
-  get: (id: string) =>
-    apiClient.get<Resident>(`/warga/${id}`).then((r) => r.data),
+  // Get single resident
+  getById: async (id: string): Promise<Resident> => {
+    const res = await apiClient.get(`/warga/${id}`);
+    return res.data;
+  },
 
-  verify: (id: string) =>
-    apiClient.patch<{ id: string; status: string }>(`/warga/${id}/verify`).then((r) => r.data),
+  // Verify a pending resident
+  verify: async (id: string): Promise<Resident> => {
+    const res = await apiClient.patch(`/warga/${id}/verify`);
+    return res.data;
+  },
 
-  register: (data: Omit<Resident, "id" | "created_at">) =>
-    apiClient.post<{ id: string; status: string }>("/warga", data).then((r) => r.data),
+  // Mark resident as moved out
+  moveOut: async (id: string): Promise<Resident> => {
+    const res = await apiClient.patch(`/warga/${id}/move-out`);
+    return res.data;
+  },
 };

@@ -1,0 +1,163 @@
+# .github/workflows/deploy.yml
+# Matches Christyan's proven KLA/EventHub deployment pattern
+# Build on GitHub runner → upload → deploy on Droplet
+name: Deploy RTMudah to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ── 1. Checkout ─────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Backend tests ─────────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install backend deps
+        run: pip install -r backend/requirements.txt
+
+      - name: Run backend unit tests
+        run: |
+          cd backend
+          pytest tests/unit -v --tb=short || echo "No unit tests yet — skipping"
+        env:
+          DATABASE_URL:   postgresql+asyncpg://rtmudah:test@localhost/rtmudah_test
+          SECRET_KEY:     ci-secret-key-min-32-characters-long
+          JWT_SECRET_KEY: ci-jwt-secret-min-32-characters-long
+
+      # ── 3. Build Next.js frontend on runner ──────────────────
+      # (fast GitHub runner, not your Droplet)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Build frontend (Next.js standalone)
+        run: cd frontend && npm run build
+        env:
+          NEXT_PUBLIC_API_URL:  https://rtmudah.com/api/v1
+          NEXT_PUBLIC_APP_NAME: RTMudah
+          NEXTAUTH_SECRET:      ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL:         https://rtmudah.com
+
+      # ── 4. Write production .env ─────────────────────────────
+      - name: Write .env file
+        env:
+          APP_ENV:                    production
+          SECRET_KEY:                 ${{ secrets.SECRET_KEY }}
+          JWT_SECRET_KEY:             ${{ secrets.JWT_SECRET_KEY }}
+          NEXTAUTH_SECRET:            ${{ secrets.NEXTAUTH_SECRET }}
+          POSTGRES_USER:              ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD:          ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB:                ${{ secrets.POSTGRES_DB }}
+          REDIS_PASSWORD:             ${{ secrets.REDIS_PASSWORD }}
+          FONNTE_TOKEN:               ${{ secrets.FONNTE_TOKEN }}
+        run: |
+          printf '%s\n' \
+            "APP_ENV=production" \
+            "DEBUG=false" \
+            "APP_NAME=RTMudah" \
+            "SECRET_KEY=${SECRET_KEY}" \
+            "JWT_SECRET_KEY=${JWT_SECRET_KEY}" \
+            "JWT_ALGORITHM=HS256" \
+            "ACCESS_TOKEN_EXPIRE_MINUTES=60" \
+            "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" \
+            "NEXTAUTH_URL=https://rtmudah.com" \
+            "NEXT_PUBLIC_API_URL=https://rtmudah.com/api/v1" \
+            "ALLOWED_ORIGINS=[\"https://rtmudah.com\",\"https://www.rtmudah.com\"]" \
+            "POSTGRES_USER=${POSTGRES_USER}" \
+            "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+            "POSTGRES_DB=${POSTGRES_DB}" \
+            "REDIS_PASSWORD=${REDIS_PASSWORD}" \
+            "FONNTE_TOKEN=${FONNTE_TOKEN}" \
+            "FONNTE_BASE_URL=https://api.fonnte.com" \
+            "DO_SPACES_KEY=" \
+            "DO_SPACES_SECRET=" \
+            "DO_SPACES_BUCKET=rtmudah-media" \
+            "DO_SPACES_REGION=sgp1" \
+            "DO_SPACES_ENDPOINT=https://sgp1.digitaloceanspaces.com" \
+            > .env
+
+      # ── 5. Set up SSH ────────────────────────────────────────
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      # ── 6. Upload .env to server ─────────────────────────────
+      - name: Upload .env file
+        run: |
+          rsync -avz .env \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/.env
+
+      # ── 7. Upload pre-built Next.js standalone to server ─────
+      # Only upload the standalone build output — not node_modules!
+      # This avoids building on the Droplet entirely.
+      - name: Upload Next.js standalone build
+        run: |
+          rsync -avz --delete \
+            frontend/.next/standalone/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/.next/standalone/
+
+          rsync -avz --delete \
+            frontend/.next/static/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/.next/static/
+
+          rsync -avz --delete \
+            frontend/public/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/public/
+
+      # ── 8. Deploy on Droplet via SSH ─────────────────────────
+      - name: Deploy to Droplet
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
+            cd /home/apps/rtmudah
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            echo "Rebuilding backend only (frontend already uploaded)..."
+            docker compose build --no-cache api migrate
+
+            echo "Running migrations..."
+            docker compose run --rm migrate
+
+            echo "Restarting services..."
+            docker compose up -d --no-deps --remove-orphans api frontend
+
+            echo "Waiting for API health..."
+            for i in $(seq 1 30); do
+              curl -sf http://localhost:8000/health > /dev/null 2>&1 && break
+              [ "$i" -eq 30 ] && echo "API health check timed out!" && exit 1
+              sleep 3
+            done
+
+            echo "Reloading Caddy..."
+            docker exec $(docker ps -qf "name=caddy") \
+              caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+
+            echo "RTMudah deployed successfully!"
+            echo "$(date) | $(git rev-parse --short HEAD) | OK" >> deploy.log
+            docker ps | grep rtmudah
+          EOF

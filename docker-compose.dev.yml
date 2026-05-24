@@ -1,0 +1,40 @@
+# docker-compose.dev.yml — Local dev overrides
+version: "3.9"
+
+services:
+  db:
+    ports:
+      - "5433:5432"
+
+  api:
+    command: ["uvicorn", "app.main:app",
+              "--host", "0.0.0.0",
+              "--port", "8000",
+              "--reload"]
+    volumes:
+      - ./backend/app:/app/app
+    environment:
+      APP_ENV: development
+      DEBUG:   "true"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    environment:
+      NEXTAUTH_URL: http://localhost:3000
+      NODE_ENV:     development
+      # CRITICAL: server-side API calls use container name, not localhost
+      # authorize() in auth/config.ts runs inside the frontend container
+      # so "localhost" would refer to the frontend container itself!
+      INTERNAL_API_URL: http://rtmudah_api:8000/api/v1
+    ports:
+      - "3000:3000"
+
+networks:
+  caddy_net:
+    external: false
+    name: rtmudah_dev_net
+    driver: bridge

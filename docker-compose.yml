@@ -1,19 +1,12 @@
 # ═══════════════════════════════════════════════════════════════════
 # RTMudah — docker-compose.yml
-#
-# NOTE: This app uses the SHARED Caddy at /home/apps/caddy
-#       There is NO caddy service here — RTMudah connects to
-#       the existing caddy_net external network.
-#
-# Usage:
-#   Production: docker compose up -d
-#   Dev local:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Fixed: removed init_db.sql mount (was causing "is a directory" error)
+# The extensions are created by Alembic migration instead
 # ═══════════════════════════════════════════════════════════════════
 version: "3.9"
 
 services:
 
-  # ── PostgreSQL ────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     container_name: rtmudah_db
@@ -24,7 +17,8 @@ services:
       POSTGRES_DB:       ${POSTGRES_DB:-rtmudah_db}
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # init_db.sql mount removed — was mounting as directory not file
+      # Extensions are handled in the Alembic migration instead
     healthcheck:
       test:     ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rtmudah} -d ${POSTGRES_DB:-rtmudah_db}"]
       interval: 5s
@@ -33,7 +27,6 @@ services:
     networks:
       - rtmudah_internal
 
-  # ── Redis ─────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: rtmudah_redis
@@ -49,7 +42,6 @@ services:
     networks:
       - rtmudah_internal
 
-  # ── Migration (run once, exits) ────────────────────────────────────
   migrate:
     build:
       context:    ./backend
@@ -66,7 +58,6 @@ services:
       - rtmudah_internal
     restart: "no"
 
-  # ── FastAPI Backend ────────────────────────────────────────────────
   api:
     build:
       context:    ./backend
@@ -83,8 +74,8 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - rtmudah_internal  # talks to DB + Redis
-      - caddy_net         # Caddy reaches this by container name: rtmudah_api
+      - rtmudah_internal
+      - caddy_net
     healthcheck:
       test:         ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval:     10s
@@ -92,7 +83,6 @@ services:
       retries:      5
       start_period: 20s
 
-  # ── Next.js Frontend ──────────────────────────────────────────────
   frontend:
     build:
       context:    ./frontend
@@ -112,7 +102,7 @@ services:
         condition: service_healthy
     networks:
       - rtmudah_internal
-      - caddy_net         # Caddy reaches this by container name: rtmudah_frontend
+      - caddy_net
     healthcheck:
       test:         ["CMD", "curl", "-sf", "http://localhost:3000"]
       interval:     15s
@@ -128,11 +118,6 @@ networks:
   rtmudah_internal:
     driver: bridge
     name:   rtmudah_internal
-
-  # ── IMPORTANT ─────────────────────────────────────────────────────
-  # This MUST match the actual Caddy network name on your Droplet.
-  # Run check-caddy-network.sh on the Droplet to find the name.
-  # Common names: caddy_net, caddy_default, apps_caddy_net
   caddy_net:
     external: true
-    name: caddy_net   # ← UPDATE THIS if your Caddy network has a different name
+    name: caddy-net

@@ -123,9 +123,14 @@ jobs:
             frontend/.next/static/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/.next/static/
 
-          rsync -avz --delete \
-            frontend/public/ \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/public/
+          # public/ is optional — only sync if it exists and has files
+          if [ -d "frontend/public" ] && [ "$(ls -A frontend/public)" ]; then
+            rsync -avz --delete \
+              frontend/public/ \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/public/
+          else
+            echo "frontend/public is empty or missing — skipping"
+          fi
 
       # ── 8. Deploy on Droplet via SSH ─────────────────────────
       - name: Deploy to Droplet

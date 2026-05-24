@@ -1,5 +1,5 @@
 // types/index.ts — COMPLETE type definitions
-// Replace your current types/index.ts with this entire file
+// Replace your current types/index.ts entirely
 
 // ── Auth ──────────────────────────────────────────────────────────
 export type UserRole   = "warga" | "admin_rt" | "admin_rw" | "super_admin";
@@ -20,11 +20,18 @@ export interface LoginPayload {
 }
 
 export interface RegisterPayload {
-  email:       string;
-  phone:       string;
-  password:    string;
-  full_name:   string;
+  email:        string;
+  phone:        string;
+  password:     string;
+  full_name:    string;
   rt_group_id?: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type:   string;
+  user_id?:     string;
+  role?:        string;
 }
 
 // ── RT Group ──────────────────────────────────────────────────────
@@ -64,15 +71,15 @@ export type InvoiceStatus = "issued" | "paid" | "overdue" | "cancelled";
 export type PaymentMethod = "bank_transfer" | "cash" | "e_wallet";
 
 export interface Invoice {
-  id:            string;
-  resident_id:   string;
+  id:             string;
+  resident_id:    string;
   resident_name?: string;
-  period_label:  string;
-  amount_idr:    number;
-  status:        InvoiceStatus;
-  bukti_url:     string | null;
-  paid_at:       string | null;
-  created_at:    string;
+  period_label:   string;
+  amount_idr:     number;
+  status:         InvoiceStatus;
+  bukti_url:      string | null;
+  paid_at:        string | null;
+  created_at:     string;
 }
 
 // ── Komunikasi ────────────────────────────────────────────────────

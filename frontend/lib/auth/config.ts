@@ -1,23 +1,18 @@
-/**
- * NextAuth v5 configuration.
- *
- * Flow:
- *   1. CredentialsProvider.authorize() calls FastAPI /auth/login → gets raw JWT
- *   2. Calls FastAPI /users/me with that JWT → gets full user profile
- *   3. Both are stored in the NextAuth JWT (encrypted httpOnly cookie)
- *   4. Session callback exposes them to client via useSession()
- *   5. apiClient reads backendToken from session to call FastAPI
- */
+// lib/auth/config.ts
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+// Server-side API URL — used in authorize() which runs inside the container
+// In Docker: use internal container name
+// Locally: use localhost
+const API_URL = process.env.INTERNAL_API_URL        // Docker internal
+  ?? process.env.NEXT_PUBLIC_API_URL                 // fallback
+  ?? "http://localhost:8000/api/v1";
 
 export const authConfig: NextAuthConfig = {
-  // ── JWT strategy — no DB needed ────────────────────────────────
-  session: { strategy: "jwt" },
+  session:   { strategy: "jwt" },
+  trustHost: true,
 
-  // ── Custom pages ───────────────────────────────────────────────
   pages: {
     signIn:  "/login",
     signOut: "/login",
@@ -26,17 +21,18 @@ export const authConfig: NextAuthConfig = {
 
   providers: [
     CredentialsProvider({
-      name: "RukunRT",
+      name: "RTMudah",
       credentials: {
-        email:    { label: "Email",    type: "email" },
+        email:    { label: "Email",    type: "email"    },
         password: { label: "Password", type: "password" },
       },
 
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        console.log(`[auth] authorize() calling: ${API_URL}/auth/login`);
+
         try {
-          // Step 1: get FastAPI JWT
           const loginRes = await fetch(`${API_URL}/auth/login`, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -46,33 +42,39 @@ export const authConfig: NextAuthConfig = {
             }),
           });
 
-          if (!loginRes.ok) return null;
+          console.log(`[auth] login response status: ${loginRes.status}`);
+
+          if (!loginRes.ok) {
+            const err = await loginRes.text();
+            console.log(`[auth] login failed: ${err}`);
+            return null;
+          }
 
           const { access_token } = await loginRes.json() as { access_token: string };
 
-          // Step 2: get user profile using that token
           const meRes = await fetch(`${API_URL}/users/me`, {
             headers: { Authorization: `Bearer ${access_token}` },
           });
 
           if (!meRes.ok) return null;
 
-          const user = await meRes.json() as {
+          const profile = await meRes.json() as {
             id: string; email: string; full_name: string;
             role: string; status: string; rt_group_id: string | null;
           };
 
-          // NextAuth user object — everything we need downstream
           return {
-            id:            user.id,
-            email:         user.email,
-            name:          user.full_name,
-            role:          user.role,
-            status:        user.status,
-            rt_group_id:   user.rt_group_id,
-            backendToken:  access_token,      // ← raw FastAPI JWT, forwarded to all API calls
+            id:           profile.id,
+            email:        profile.email,
+            name:         profile.full_name,
+            full_name:    profile.full_name,
+            role:         profile.role,
+            status:       profile.status,
+            rt_group_id:  profile.rt_group_id,
+            backendToken: access_token,
           };
-        } catch {
+        } catch (e) {
+          console.error(`[auth] authorize() error:`, e);
           return null;
         }
       },
@@ -80,33 +82,28 @@ export const authConfig: NextAuthConfig = {
   ],
 
   callbacks: {
-    /**
-     * jwt() runs when a token is created or updated.
-     * We copy our custom fields from the provider user → the JWT.
-     */
     async jwt({ token, user }) {
       if (user) {
-        token.id           = user.id;
-        token.role         = (user as any).role;
-        token.status       = (user as any).status;
-        token.rt_group_id  = (user as any).rt_group_id;
-        token.backendToken = (user as any).backendToken;
-        token.full_name    = user.name ?? "";
+        const u = user as any;
+        token.id           = u.id;
+        token.role         = u.role;
+        token.status       = u.status;
+        token.rt_group_id  = u.rt_group_id;
+        token.backendToken = u.backendToken;
+        token.full_name    = u.full_name;
       }
       return token;
     },
 
-    /**
-     * session() shapes what useSession() returns on the client.
-     * We expose role, status, rt_group_id and the raw FastAPI token.
-     */
     async session({ session, token }) {
-      session.user.id           = token.id as string;
-      session.user.role         = token.role as string;
-      session.user.status       = token.status as string;
-      session.user.rt_group_id  = token.rt_group_id as string | null;
-      session.user.full_name    = token.full_name as string;
-      session.backendToken      = token.backendToken as string;
+      const t = token as any;
+      const s = session as any;
+      s.user.id           = t.id;
+      s.user.role         = t.role;
+      s.user.status       = t.status;
+      s.user.rt_group_id  = t.rt_group_id;
+      s.user.full_name    = t.full_name;
+      s.backendToken      = t.backendToken;
       return session;
     },
   },

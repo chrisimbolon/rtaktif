@@ -145,10 +145,23 @@ jobs:
             echo "Rebuilding backend only (frontend already uploaded)..."
             docker compose build --no-cache api migrate
 
+            echo "Starting DB + Redis first..."
+            docker compose up -d db redis
+
+            echo "Waiting for DB to be healthy (up to 60s)..."
+            for i in $(seq 1 20); do
+              STATUS=$(docker inspect rtmudah_db --format="{{.State.Health.Status}}" 2>/dev/null || echo "starting")
+              echo "DB status: $STATUS (attempt $i/20)"
+              [ "$STATUS" = "healthy" ] && break
+              [ "$i" -eq 20 ] && echo "DB health check timed out!" && exit 1
+              sleep 3
+            done
+            echo "DB is healthy ✅"
+
             echo "Running migrations..."
             docker compose run --rm migrate
 
-            echo "Restarting services..."
+            echo "Starting API + Frontend..."
             docker compose up -d --no-deps --remove-orphans api frontend
 
             echo "Waiting for API health..."
@@ -157,10 +170,10 @@ jobs:
               [ "$i" -eq 30 ] && echo "API health check timed out!" && exit 1
               sleep 3
             done
+            echo "API healthy ✅"
 
             echo "Reloading Caddy..."
-            docker exec $(docker ps -qf "name=caddy") \
-              caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+            docker exec $(docker ps -qf "name=caddy")               caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
 
             echo "RTMudah deployed successfully!"
             echo "$(date) | $(git rev-parse --short HEAD) | OK" >> deploy.log

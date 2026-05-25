@@ -1,27 +1,29 @@
-// proxy.ts
+// proxy.ts — Next.js 16 convention
+// Function MUST be named "proxy" (not default export)
 import { auth } from "@/lib/auth/config";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const PUBLIC_ROUTES = ["/", "/login", "/register"];  // ← added "/"
+const PUBLIC_ROUTES = ["/", "/login", "/register"];
 const ADMIN_ROUTES  = ["/dashboard", "/warga", "/tagihan", "/pengumuman", "/laporan", "/pengaturan"];
 const WARGA_ROUTES  = ["/beranda", "/warga/tagihan", "/warga/pengumuman", "/warga/laporan", "/warga/profil"];
 const ADMIN_ROLES   = ["admin_rt", "admin_rw", "super_admin"];
 
-export default auth((request: NextRequest & { auth: any }) => {
+// ── Named "proxy" export — required in Next.js 16 ─────────────────
+export const proxy = auth((request: NextRequest & { auth: any }) => {
   const { pathname } = request.nextUrl;
   const session      = request.auth;
   const isAuth       = !!session?.user;
-  const role         = session?.user?.role ?? "";
+  const role         = (session?.user as any)?.role ?? "";
 
-  // 1. Public routes — allow always
+  // 1. Public routes — always allow
   if (PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"))) {
-    // Already logged in hitting /login or /register → skip to dashboard
+    // Already logged in hitting /login or /register → redirect to app
     if (isAuth && (pathname.startsWith("/login") || pathname.startsWith("/register"))) {
       const dest = ADMIN_ROLES.includes(role) ? "/dashboard" : "/beranda";
       return NextResponse.redirect(new URL(dest, request.url));
     }
-    // "/" → show landing page whether logged in or not
+    // "/" and other public routes → just show the page
     return NextResponse.next();
   }
 
@@ -33,12 +35,12 @@ export default auth((request: NextRequest & { auth: any }) => {
   }
 
   // 3. Suspended account
-  if (session.user.status === "suspended") {
+  if ((session.user as any).status === "suspended") {
     return NextResponse.redirect(new URL("/login?error=AccountSuspended", request.url));
   }
 
   // 4. Pending account on protected route
-  if (session.user.status === "pending") {
+  if ((session.user as any).status === "pending") {
     return NextResponse.redirect(new URL("/login?error=AccountPending", request.url));
   }
 

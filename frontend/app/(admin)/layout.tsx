@@ -1,22 +1,50 @@
 // app/(admin)/layout.tsx
+// Auth guard lives here in Next.js 16 — NOT in proxy.ts
 "use client";
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { SessionGuard } from "@/components/shared/SessionGuard";
-import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+
+const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin"];
 
 const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
-  "/dashboard":  { title: "Dashboard",       subtitle: "Ringkasan RT Anda hari ini"      },
-  "/warga":      { title: "Data Warga",       subtitle: "Kelola data penduduk RT"         },
-  "/tagihan":    { title: "Tagihan & Iuran",  subtitle: "Kelola pembayaran bulanan"       },
-  "/pengumuman": { title: "Pengumuman",       subtitle: "Broadcast informasi ke warga"    },
-  "/laporan":    { title: "Laporan Warga",    subtitle: "Keluhan & laporan dari warga"    },
-  "/pengaturan": { title: "Pengaturan",       subtitle: "Konfigurasi RT Anda"             },
+  "/dashboard":  { title: "Dashboard",      subtitle: "Ringkasan RT Anda hari ini"   },
+  "/warga":      { title: "Data Warga",      subtitle: "Kelola data penduduk RT"      },
+  "/tagihan":    { title: "Tagihan & Iuran", subtitle: "Kelola pembayaran bulanan"    },
+  "/pengumuman": { title: "Pengumuman",      subtitle: "Broadcast informasi ke warga" },
+  "/laporan":    { title: "Laporan Warga",   subtitle: "Keluhan & laporan dari warga" },
+  "/pengaturan": { title: "Pengaturan",      subtitle: "Konfigurasi RT Anda"          },
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
+  const router   = useRouter();
   const pathname = usePathname();
-  const meta     = PAGE_META[pathname] ?? { title: "RukunRT" };
+  const meta     = PAGE_META[pathname] ?? { title: "RTMudah" };
+
+  useEffect(() => {
+    if (status === "loading") return;
+
+    // Not logged in → go to login
+    if (!session) {
+      router.replace(`/login?callbackUrl=${pathname}`);
+      return;
+    }
+
+    const role   = (session.user as any)?.role   ?? "";
+    const status_ = (session.user as any)?.status ?? "";
+
+    // Suspended or pending → go to login
+    if (status_ === "suspended") { router.replace("/login?error=AccountSuspended"); return; }
+    if (status_ === "pending")   { router.replace("/login?error=AccountPending");   return; }
+
+    // Warga trying to access admin → go to beranda
+    if (!ADMIN_ROLES.includes(role)) { router.replace("/beranda"); return; }
+
+  }, [session, status, router, pathname]);
 
   return (
     <SessionGuard>

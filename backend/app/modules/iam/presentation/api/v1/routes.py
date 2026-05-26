@@ -9,6 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from typing import Optional
+from pydantic import BaseModel
+
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import (
@@ -145,6 +148,15 @@ async def assign_role(
 
 
 # ── RT Groups ─────────────────────────────────────────────────────
+class UpdateRTGroupRequest(BaseModel):
+    rt_number:       Optional[str] = None
+    rw_number:       Optional[str] = None
+    kelurahan:       Optional[str] = None
+    kecamatan:       Optional[str] = None
+    kota:            Optional[str] = None
+    provinsi:        Optional[str] = None
+    monthly_fee_idr: Optional[int] = None
+
 
 @router.post("/rt-groups", status_code=201, tags=["RT Groups"])
 async def create_rt_group(
@@ -184,3 +196,74 @@ async def get_rt_members(
         }
         for u in users
     ]
+
+# ── GET /rt-groups/{rt_group_id} ─────────────────────────────────────────────
+@router.get("/rt-groups/{rt_group_id}", tags=["RT Groups"])
+async def get_rt_group(
+    rt_group_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetch a single RT group by ID.
+    Any authenticated user can fetch their own RT group.
+    """
+    rt = await PgRTGroupRepository(db).get_by_id(rt_group_id)
+    if not rt:
+        raise HTTPException(status_code=404, detail="RT group tidak ditemukan")
+    return {
+        "id":              str(rt.id),
+        "rt_number":       rt.rt_number,
+        "rw_number":       rt.rw_number,
+        "kelurahan":       rt.kelurahan,
+        "kecamatan":       rt.kecamatan,
+        "kota":            rt.kota,
+        "provinsi":        rt.provinsi,
+        "monthly_fee_idr": rt.monthly_fee_idr,
+        "display_name":    rt.display_name,
+    }
+
+
+# ── PATCH /rt-groups/{rt_group_id} ───────────────────────────────────────────
+@router.patch("/rt-groups/{rt_group_id}", tags=["RT Groups"])
+async def update_rt_group(
+    rt_group_id: UUID,
+    body: UpdateRTGroupRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update RT group details. Admin only.
+    Partial update — only fields provided will be changed.
+    """
+    repo = PgRTGroupRepository(db)
+    rt = await repo.get_by_id(rt_group_id)
+    if not rt:
+        raise HTTPException(status_code=404, detail="RT group tidak ditemukan")
+
+    # Apply partial updates — only override fields that were sent
+    if body.rt_number       is not None: rt.rt_number       = body.rt_number
+    if body.rw_number       is not None: rt.rw_number       = body.rw_number
+    if body.kelurahan       is not None: rt.kelurahan       = body.kelurahan
+    if body.kecamatan       is not None: rt.kecamatan       = body.kecamatan
+    if body.kota            is not None: rt.kota            = body.kota
+    if body.provinsi        is not None: rt.provinsi        = body.provinsi
+    if body.monthly_fee_idr is not None: rt.monthly_fee_idr = body.monthly_fee_idr
+
+    try:
+        await repo.save(rt)
+        await db.commit()
+    except IntegrityError as e:
+        raise HTTPException(status_code=409, detail=_integrity_message(e))
+
+    return {
+        "id":              str(rt.id),
+        "rt_number":       rt.rt_number,
+        "rw_number":       rt.rw_number,
+        "kelurahan":       rt.kelurahan,
+        "kecamatan":       rt.kecamatan,
+        "kota":            rt.kota,
+        "provinsi":        rt.provinsi,
+        "monthly_fee_idr": rt.monthly_fee_idr,
+        "display_name":    rt.display_name,
+    }

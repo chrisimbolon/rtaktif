@@ -1,10 +1,17 @@
 // lib/api/client.ts
-// Replace your current client.ts with this —
-// reads JWT from NextAuth session instead of localStorage
-import axios, { type InternalAxiosRequestConfig } from "axios";
-import { getSession, signOut } from "next-auth/react";
+// ─────────────────────────────────────────────────────────────────────────────
+// Axios client that auto-attaches the FastAPI JWT from NextAuth session.
+//
+// Token priority:
+//   1. NextAuth session.backendToken (set via getSession)
+//   2. No token → request sent without auth (will 403 on protected endpoints)
+// ─────────────────────────────────────────────────────────────────────────────
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import { getSession } from "next-auth/react";
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -12,41 +19,28 @@ export const apiClient = axios.create({
   timeout: 15_000,
 });
 
-// ── Request interceptor: attach JWT ───────────────────────────────
-apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-  try {
-    // Primary: read backendToken from NextAuth session (httpOnly cookie)
-    const session = await getSession();
-    if (session?.backendToken) {
-      config.headers.Authorization = `Bearer ${session.backendToken}`;
-      return config;
+// Attach JWT from NextAuth session on every request
+apiClient.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    if (typeof window !== "undefined") {
+      const session = await getSession();
+      const token   = (session as any)?.backendToken;
+      if (token) config.headers.Authorization = `Bearer ${token}`;
     }
-  } catch {
-    // getSession() may throw in SSR context — fall through to localStorage
-  }
+    return config;
+  },
+  (err) => Promise.reject(err),
+);
 
-  // Fallback: localStorage (dev convenience / SSR fallback)
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("rukunrt_token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
-
-// ── Response interceptor: handle 401 ─────────────────────────────
+// Global error handler — redirect to login on 401
 apiClient.interceptors.response.use(
   (res) => res,
-  async (err) => {
-    if (err.response?.status === 401) {
-      await signOut({ redirect: false });
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("rukunrt_token");
-        window.location.href = "/login";
-      }
+  (err: AxiosError) => {
+    if (err.response?.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 export default apiClient;

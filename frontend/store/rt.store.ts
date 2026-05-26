@@ -1,5 +1,5 @@
 // store/rt.store.ts
-// Keep your existing rt.store.ts or replace with this
+// Persists RT group so sidebar name survives page refresh
 import type { RTGroup } from "@/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -17,6 +17,6 @@ export const useRTStore = create<RTState>()(
       setActiveRT: (rt) => set({ activeRT: rt }),
       clearRT:     ()   => set({ activeRT: null }),
     }),
-    { name: "rukunrt-rt" }
+    { name: "rtmudah-rt" }  // localStorage key
   )
 );

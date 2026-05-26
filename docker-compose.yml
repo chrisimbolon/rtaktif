@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
 
   db:
@@ -99,8 +101,7 @@ services:
       - ./frontend/.next/static:/app/.next/static
       - ./frontend/public:/app/public
     depends_on:
-      api:
-        condition: service_healthy
+      - api
     networks:
       - rtmudah_internal
       - caddy_net

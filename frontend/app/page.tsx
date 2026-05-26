@@ -33,7 +33,7 @@ const STEPS = [
 
 const PLANS = [
   {
-    name: "Starter", price: "Gratis", period: "/selamanya",
+    name: "Starter", price: "Rp 30k", period: "/bulan",
     desc: "Untuk RT kecil yang baru memulai digitalisasi",
     features: ["Hingga 50 KK", "Data & profil warga", "Tagihan bulanan", "Pengumuman dasar", "1 admin"],
     cta: "Mulai Gratis", href: "/register", featured: false,
@@ -198,7 +198,7 @@ export default function LandingPage() {
               <span className="text-yellow-400">Mudah</span>,{" "}
               Lebih Modern.
             </h1>
-            <p className="text-base sm:text-lg text-white/80 mb-8 leading-relaxed">
+            <p className="text-base sm:text-lg text-yellow-100 mb-8 leading-relaxed">
               Satu platform digital untuk data warga, iuran bulanan, pengumuman, dan laporan.
               Dibangun khusus untuk Ketua RT/RW Indonesia.
             </p>

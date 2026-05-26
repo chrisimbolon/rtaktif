@@ -94,6 +94,7 @@ jobs:
             "DO_SPACES_BUCKET=rtmudah-media" \
             "DO_SPACES_REGION=sgp1" \
             "DO_SPACES_ENDPOINT=https://sgp1.digitaloceanspaces.com" \
+            "INTERNAL_API_URL=http://rtmudah_api:8000/api/v1" \
             > .env
 
       # ── 5. Set up SSH ────────────────────────────────────────
@@ -166,7 +167,7 @@ jobs:
 
             echo "Starting Frontend with latest pre-built standalone..."
             docker compose rm -sf frontend
-            docker compose up -d frontend
+            docker compose up -d --no-deps frontend
 
             echo "Waiting for API health..."
             for i in $(seq 1 30); do

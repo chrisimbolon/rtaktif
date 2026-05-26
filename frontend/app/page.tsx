@@ -33,7 +33,7 @@ const STEPS = [
 
 const PLANS = [
   {
-    name: "Starter", price: "Rp 35k", period: "/bulan",
+    name: "Starter", price: "Rp 33k", period: "/bulan",
     desc: "Untuk RT kecil yang baru memulai digitalisasi",
     features: ["Hingga 50 KK", "Data & profil warga", "Tagihan bulanan", "Pengumuman dasar", "1 admin"],
     cta: "Mulai Gratis", href: "/register", featured: false,

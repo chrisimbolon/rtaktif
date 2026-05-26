@@ -1,4 +1,6 @@
 # .github/workflows/deploy.yml
+# Build on GitHub runner → upload → deploy on Droplet
+# Smart rebuild: backend only rebuilds when backend/ files change
 name: Deploy RTMudah to Production
 
 on:
@@ -16,18 +18,49 @@ jobs:
       # ── 1. Checkout ─────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need HEAD~1 for diff check
 
-      # ── 2. Backend tests ─────────────────────────────────────
+      # ── 2. Detect what changed ───────────────────────────────
+      - name: Detect changed paths
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Backend changed if any file under backend/ changed
+          if echo "$CHANGED" | grep -q "^backend/"; then
+            echo "backend=true"  >> $GITHUB_OUTPUT
+            echo "✅ Backend changed — will rebuild"
+          else
+            echo "backend=false" >> $GITHUB_OUTPUT
+            echo "⏭️  Backend unchanged — skip rebuild"
+          fi
+
+          # Frontend changed if any frontend/ file changed
+          if echo "$CHANGED" | grep -q "^frontend/"; then
+            echo "frontend=true"  >> $GITHUB_OUTPUT
+            echo "✅ Frontend changed — will rebuild"
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+            echo "⏭️  Frontend unchanged — skip rebuild"
+          fi
+
+      # ── 3. Backend tests ─────────────────────────────────────
       - name: Setup Python
+        if: steps.changes.outputs.backend == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install backend deps
+        if: steps.changes.outputs.backend == 'true'
         run: pip install -r backend/requirements.txt
 
       - name: Run backend unit tests
+        if: steps.changes.outputs.backend == 'true'
         run: |
           cd backend
           pytest tests/unit -v --tb=short || echo "No unit tests yet — skipping"
@@ -36,8 +69,9 @@ jobs:
           SECRET_KEY:     ci-secret-key-min-32-characters-long
           JWT_SECRET_KEY: ci-jwt-secret-min-32-characters-long
 
-      # ── 3. Build Next.js frontend on runner ──────────────────
+      # ── 4. Build Next.js frontend ────────────────────────────
       - name: Setup Node
+        if: steps.changes.outputs.frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -45,9 +79,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend deps
+        if: steps.changes.outputs.frontend == 'true'
         run: cd frontend && npm ci
 
       - name: Build frontend (Next.js standalone)
+        if: steps.changes.outputs.frontend == 'true'
         run: cd frontend && npm run build
         env:
           NEXT_PUBLIC_API_URL:  https://rtmudah.com/api/v1
@@ -55,17 +91,17 @@ jobs:
           NEXTAUTH_SECRET:      ${{ secrets.NEXTAUTH_SECRET }}
           NEXTAUTH_URL:         https://rtmudah.com
 
-      # ── 4. Write production .env ─────────────────────────────
+      # ── 5. Write production .env ─────────────────────────────
       - name: Write .env file
         env:
-          SECRET_KEY:       ${{ secrets.SECRET_KEY }}
-          JWT_SECRET_KEY:   ${{ secrets.JWT_SECRET_KEY }}
-          NEXTAUTH_SECRET:  ${{ secrets.NEXTAUTH_SECRET }}
-          POSTGRES_USER:    ${{ secrets.POSTGRES_USER }}
+          SECRET_KEY:        ${{ secrets.SECRET_KEY }}
+          JWT_SECRET_KEY:    ${{ secrets.JWT_SECRET_KEY }}
+          NEXTAUTH_SECRET:   ${{ secrets.NEXTAUTH_SECRET }}
+          POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB:      ${{ secrets.POSTGRES_DB }}
-          REDIS_PASSWORD:   ${{ secrets.REDIS_PASSWORD }}
-          FONNTE_TOKEN:     ${{ secrets.FONNTE_TOKEN }}
+          POSTGRES_DB:       ${{ secrets.POSTGRES_DB }}
+          REDIS_PASSWORD:    ${{ secrets.REDIS_PASSWORD }}
+          FONNTE_TOKEN:      ${{ secrets.FONNTE_TOKEN }}
         run: |
           printf '%s\n' \
             "APP_ENV=production" \
@@ -93,7 +129,7 @@ jobs:
             "DO_SPACES_ENDPOINT=https://sgp1.digitaloceanspaces.com" \
             > .env
 
-      # ── 5. Set up SSH ────────────────────────────────────────
+      # ── 6. Set up SSH ────────────────────────────────────────
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
@@ -101,14 +137,15 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # ── 6. Upload .env to server ─────────────────────────────
+      # ── 7. Upload .env ───────────────────────────────────────
       - name: Upload .env file
         run: |
           rsync -avz .env \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/.env
 
-      # ── 7. Upload pre-built Next.js standalone to server ─────
+      # ── 8. Upload frontend build (only if changed) ───────────
       - name: Upload Next.js standalone build
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           rsync -avz --delete \
             frontend/.next/standalone/ \
@@ -123,11 +160,12 @@ jobs:
               frontend/public/ \
               ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/frontend/public/
           else
-            echo "frontend/public is empty or missing — skipping"
+            echo "frontend/public empty — skipping"
           fi
 
-      # ── 8. Deploy backend on Droplet ─────────────────────────
+      # ── 9. Deploy backend (only if changed) ──────────────────
       - name: Deploy backend
+        if: steps.changes.outputs.backend == 'true'
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
             set -e
@@ -136,7 +174,7 @@ jobs:
             echo "=== Pulling latest code ==="
             git pull origin main
 
-            echo "=== Building backend ==="
+            echo "=== Building backend (layer cache) ==="
             docker compose build api migrate
 
             echo "=== Starting DB + Redis ==="
@@ -152,46 +190,62 @@ jobs:
             done
 
             echo "=== Running migrations ==="
-            docker compose run --rm migrate || echo "Migrations done (or already up to date)"
+            docker compose run --rm migrate || echo "Migrations done"
 
-            echo "=== Starting API ==="
+            echo "=== Restarting API ==="
+            docker stop rtmudah_api  2>/dev/null || true
+            docker rm   rtmudah_api  2>/dev/null || true
             docker compose up -d --no-deps api
-            echo "API started"
+            echo "=== API restarted ==="
           ENDSSH
 
-      # ── 9. Deploy frontend on Droplet ────────────────────────
+      # ── 10. Pull latest code if only frontend changed ────────
+      - name: Pull latest code (frontend-only deploy)
+        if: steps.changes.outputs.backend == 'false'
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
+            set -e
+            cd /home/apps/rtmudah
+            echo "=== Pulling latest code ==="
+            git pull origin main
+          ENDSSH
+
+      # ── 11. Deploy frontend ───────────────────────────────────
       - name: Deploy frontend
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
             set -e
             cd /home/apps/rtmudah
 
-            echo "=== Restarting frontend with new build ==="
-            docker stop rtmudah_frontend || echo "Frontend was not running"
-            docker rm   rtmudah_frontend || echo "Frontend container removed"
-
+            echo "=== Restarting frontend ==="
+            docker stop rtmudah_frontend 2>/dev/null || true
+            docker rm   rtmudah_frontend 2>/dev/null || true
             docker compose up -d --no-deps frontend
-            echo "=== Frontend started ==="
+            echo "=== Frontend restarted ==="
 
             sleep 5
             docker ps | grep rtmudah
           ENDSSH
 
-      # ── 10. Health check + Caddy reload ──────────────────────
+      # ── 12. Health check + Caddy reload ──────────────────────
       - name: Health check and Caddy reload
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
             echo "=== Waiting for API health ==="
             for i in $(seq 1 30); do
-              docker exec rtmudah_api curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "API healthy!" && break
-              echo "Waiting for API... ($i/30)"
+              docker exec rtmudah_api curl -sf http://localhost:8000/health \
+                > /dev/null 2>&1 && echo "API healthy!" && break
+              echo "Waiting... ($i/30)"
               [ "$i" -eq 30 ] && echo "API timeout!" && exit 1
               sleep 3
             done
 
             echo "=== Reloading Caddy ==="
             CADDY=$(docker ps -qf "name=caddy")
-            [ -n "$CADDY" ] && docker exec $CADDY caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo "Caddy reload skipped"
+            [ -n "$CADDY" ] && docker exec $CADDY \
+              caddy reload --config /etc/caddy/Caddyfile 2>/dev/null \
+              || echo "Caddy reload skipped"
 
             echo "=== Deploy complete! ==="
             cd /home/apps/rtmudah

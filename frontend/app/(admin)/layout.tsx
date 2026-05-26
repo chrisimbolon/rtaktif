@@ -1,9 +1,10 @@
 // app/(admin)/layout.tsx
-// Auth guard lives here in Next.js 16 — NOT in proxy.ts
+// Auth guard + RT group loader
 "use client";
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { SessionGuard } from "@/components/shared/SessionGuard";
+import { useRTGroup } from "@/lib/hooks/useRTGroup";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -25,23 +26,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const meta     = PAGE_META[pathname] ?? { title: "RTMudah" };
 
+  // ── Auto-fetch + cache RT group in Zustand store ──────────────────
+  // This is what makes the sidebar show "RT 05/RW 02 — Padang Harapan"
+  useRTGroup();
+
   useEffect(() => {
     if (status === "loading") return;
 
-    // Not logged in → go to login
     if (!session) {
       router.replace(`/login?callbackUrl=${pathname}`);
       return;
     }
 
-    const role   = (session.user as any)?.role   ?? "";
-    const status_ = (session.user as any)?.status ?? "";
+    const role    = (session.user as any)?.role   ?? "";
+    const uStatus = (session.user as any)?.status ?? "";
 
-    // Suspended or pending → go to login
-    if (status_ === "suspended") { router.replace("/login?error=AccountSuspended"); return; }
-    if (status_ === "pending")   { router.replace("/login?error=AccountPending");   return; }
-
-    // Warga trying to access admin → go to beranda
+    if (uStatus === "suspended") { router.replace("/login?error=AccountSuspended"); return; }
+    if (uStatus === "pending")   { router.replace("/login?error=AccountPending");   return; }
     if (!ADMIN_ROLES.includes(role)) { router.replace("/beranda"); return; }
 
   }, [session, status, router, pathname]);

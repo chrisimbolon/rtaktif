@@ -1,13 +1,21 @@
 // frontend/next.config.ts
-// IMPORTANT: output: "standalone" is REQUIRED for Docker multi-stage build
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",   // ← REQUIRED for Docker
 
-  images: {
-    domains: ["sgp1.digitaloceanspaces.com"],
-  },
+  // Replace images.domains with remotePatterns in next.config.ts
+images: {
+  remotePatterns: [
+    {
+      protocol: "https",
+      hostname: "sgp1.digitaloceanspaces.com",
+    },
+  ],
+},
+  // images: {
+  //   domains: ["sgp1.digitaloceanspaces.com"],
+  // },
 
   async rewrites() {
     return [

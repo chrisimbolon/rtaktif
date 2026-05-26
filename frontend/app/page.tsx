@@ -1,13 +1,10 @@
-// app/page.tsx
-// RTMudah Landing Page — replaces the redirect to /login
-// Visitors see this first, then click Masuk/Daftar to go to /login or /register
+// app/page.tsx — RTMudah Landing Page (fully responsive, Tailwind)
 import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "RTMudah — Sistem Manajemen RT/RW Digital",
-  description:
-    "Satu platform digital untuk data warga, iuran bulanan, pengumuman, dan laporan. Dibangun khusus untuk Ketua RT/RW Indonesia.",
+  description: "Satu platform digital untuk data warga, iuran bulanan, pengumuman, dan laporan. Dibangun khusus untuk Ketua RT/RW Indonesia.",
   openGraph: {
     title: "RTMudah — Kelola RT Lebih Mudah, Lebih Modern",
     description: "Platform manajemen RT/RW digital untuk lingkungan yang lebih tertib, transparan, dan guyub.",
@@ -18,245 +15,238 @@ export const metadata: Metadata = {
   },
 };
 
-// ── Data ────────────────────────────────────────────────────────────
 const FEATURES = [
-  {
-    icon: "👥",
-    bg: "#d1fae5",
-    title: "Data Warga",
-    desc: "Kelola profil warga lengkap dengan status verifikasi, nomor KK, dan riwayat. Admin memverifikasi setiap pendaftar baru.",
-    live: true,
-  },
-  {
-    icon: "💳",
-    bg: "#dbeafe",
-    title: "Tagihan & Iuran",
-    desc: "Generate tagihan bulanan otomatis untuk semua warga aktif. Konfirmasi pembayaran dengan satu klik dan pantau kas RT.",
-    live: true,
-  },
-  {
-    icon: "📢",
-    bg: "#fef3c7",
-    title: "Pengumuman",
-    desc: "Broadcast informasi ke seluruh warga via aplikasi. Kategorikan sebagai info, mendesak, atau kegiatan dengan preview langsung.",
-    live: true,
-  },
-  {
-    icon: "📋",
-    bg: "#fce7f3",
-    title: "Laporan Warga",
-    desc: "Warga bisa melaporkan masalah lingkungan langsung dari aplikasi. Admin menangani dan menyelesaikan setiap laporan.",
-    live: true,
-  },
-  {
-    icon: "📊",
-    bg: "#ede9fe",
-    title: "Dashboard Analitik",
-    desc: "Lihat ringkasan RT Anda dalam satu layar — total warga, tingkat pembayaran, kas terkumpul, dan grafik 6 bulan.",
-    live: true,
-  },
-  {
-    icon: "⚙️",
-    bg: "#f0fdf4",
-    title: "Multi-tenant SaaS",
-    desc: "Setiap RT punya data terisolasi. Satu platform untuk ribuan RT se-Indonesia dengan keamanan data terjamin.",
-    live: true,
-  },
+  { icon: "👥", bg: "bg-green-100",  title: "Data Warga",        desc: "Kelola profil warga lengkap dengan status verifikasi, nomor KK, dan riwayat. Admin memverifikasi setiap pendaftar baru." },
+  { icon: "💳", bg: "bg-blue-100",   title: "Tagihan & Iuran",   desc: "Generate tagihan bulanan otomatis untuk semua warga aktif. Konfirmasi pembayaran dengan satu klik dan pantau kas RT." },
+  { icon: "📢", bg: "bg-yellow-100", title: "Pengumuman",        desc: "Broadcast informasi ke seluruh warga via aplikasi. Kategorikan sebagai info, mendesak, atau kegiatan dengan preview langsung." },
+  { icon: "📋", bg: "bg-pink-100",   title: "Laporan Warga",     desc: "Warga bisa melaporkan masalah lingkungan langsung dari aplikasi. Admin menangani dan menyelesaikan setiap laporan." },
+  { icon: "📊", bg: "bg-purple-100", title: "Dashboard Analitik",desc: "Lihat ringkasan RT Anda dalam satu layar — total warga, tingkat pembayaran, kas terkumpul, dan grafik 6 bulan." },
+  { icon: "⚙️", bg: "bg-emerald-50", title: "Multi-tenant SaaS", desc: "Setiap RT punya data terisolasi. Satu platform untuk ribuan RT se-Indonesia dengan keamanan data terjamin." },
 ];
 
 const STEPS = [
-  { num: 1, title: "Daftar Gratis", desc: "Buat akun dengan email. Konfirmasi selesai dalam hitungan detik." },
-  { num: 2, title: "Setup RT Anda", desc: "Masukkan nomor RT/RW, kelurahan, dan iuran bulanan di halaman Pengaturan." },
-  { num: 3, title: "Ajak Warga", desc: "Bagikan link daftar ke warga. Mereka mendaftar, Anda verifikasi." },
-  { num: 4, title: "Kelola Semuanya", desc: "Generate tagihan, kirim pengumuman, dan pantau laporan dari satu dashboard." },
+  { num: 1, title: "Daftar Gratis",    desc: "Buat akun dengan email. Konfirmasi selesai dalam hitungan detik." },
+  { num: 2, title: "Setup RT Anda",    desc: "Masukkan nomor RT/RW, kelurahan, dan iuran bulanan di halaman Pengaturan." },
+  { num: 3, title: "Ajak Warga",       desc: "Bagikan link daftar ke warga. Mereka mendaftar, Anda verifikasi." },
+  { num: 4, title: "Kelola Semuanya",  desc: "Generate tagihan, kirim pengumuman, dan pantau laporan dari satu dashboard." },
 ];
 
 const PLANS = [
   {
-    name: "Starter",
-    price: "Gratis",
-    period: "/selamanya",
+    name: "Starter", price: "Gratis", period: "/selamanya",
     desc: "Untuk RT kecil yang baru memulai digitalisasi",
     features: ["Hingga 50 KK", "Data & profil warga", "Tagihan bulanan", "Pengumuman dasar", "1 admin"],
-    cta: "Mulai Gratis",
-    href: "/register",
-    featured: false,
+    cta: "Mulai Gratis", href: "/register", featured: false,
   },
   {
-    name: "RT Aktif",
-    price: "Rp 49k",
-    period: "/bulan",
+    name: "RT Aktif", price: "Rp 49k", period: "/bulan",
     desc: "Untuk RT yang ingin fitur lengkap dan notifikasi otomatis",
     features: ["Hingga 150 KK", "Semua fitur Starter", "Laporan warga", "Notifikasi WhatsApp", "Analitik lengkap", "3 admin"],
-    cta: "Coba Gratis 30 Hari",
-    href: "/register",
-    featured: true,
+    cta: "Coba Gratis 30 Hari", href: "/register", featured: true,
   },
   {
-    name: "Pro RW",
-    price: "Rp 149k",
-    period: "/bulan",
+    name: "Pro RW", price: "Rp 149k", period: "/bulan",
     desc: "Untuk RW yang mengelola banyak RT sekaligus",
     features: ["Warga tidak terbatas", "Multi RT/RW", "Semua fitur RT Aktif", "Laporan analitik", "Admin tidak terbatas", "Prioritas dukungan"],
-    cta: "Hubungi Kami",
-    href: "mailto:hello@rtmudah.com",
-    featured: false,
+    cta: "Hubungi Kami", href: "mailto:hello@rtmudah.com", featured: false,
   },
 ];
 
-// ── Component ────────────────────────────────────────────────────────
+const STATS_BAR = [
+  { num: "100%", lbl: "Open Early Access" },
+  { num: "5 mnt", lbl: "Setup pertama" },
+  { num: "Free", lbl: "Selama beta" },
+  { num: "HTTPS", lbl: "Data terenkripsi" },
+];
+
+// ── Subcomponents ────────────────────────────────────────────────────
+function Logo({ white = false }: { white?: boolean }) {
+  return (
+    <Link href="/" className="flex items-center gap-2.5 no-underline">
+      <div className="w-9 h-9 bg-yellow-400 rounded-lg flex items-center justify-center font-extrabold text-sm text-blue-900">
+        RT
+      </div>
+      <span className={`font-bold text-lg ${white ? "text-white" : "text-blue-900"}`}>
+        <span className="text-yellow-400">RT</span>Mudah
+      </span>
+    </Link>
+  );
+}
+
+function DashboardMockup() {
+  const sidebar = ["Dashboard","Data Warga","Tagihan","Pengumuman","Laporan","Pengaturan"];
+  const bars = [[52,8],[44,12],[56,6],[48,10],[60,8],[52,14]];
+  const months = ["Jan","Feb","Mar","Apr","Mei","Jun"];
+  const warga = [
+    { init: "BS", name: "Budi Santoso",  bg: "bg-blue-900",   badge: "Aktif",   bc: "bg-green-100 text-green-800" },
+    { init: "SA", name: "Siti Aminah",   bg: "bg-amber-500",  badge: "Pending", bc: "bg-yellow-100 text-yellow-800" },
+    { init: "AR", name: "Agus Riyanto",  bg: "bg-purple-500", badge: "Aktif",   bc: "bg-green-100 text-green-800" },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.3)] w-full max-w-xl mx-auto">
+      {/* Window bar */}
+      <div className="bg-zinc-900 px-3.5 py-2.5 flex items-center gap-1.5">
+        <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+        <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+        <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+        <div className="bg-zinc-700 rounded px-2.5 py-0.5 text-xs text-zinc-400 ml-2">
+          rtmudah.com/dashboard
+        </div>
+      </div>
+      {/* Body */}
+      <div className="flex h-[260px] sm:h-[300px]">
+        {/* Sidebar */}
+        <div className="w-32 sm:w-36 bg-[#1a1a2e] py-3 flex-shrink-0">
+          <div className="px-3 pb-2.5 border-b border-white/10 mb-2">
+            <div className="text-xs font-bold text-white">RTMudah</div>
+            <div className="text-[9px] text-white/40 mt-0.5">Pilih RT di pengaturan</div>
+          </div>
+          {sidebar.map((item, i) => (
+            <div key={item} className={`px-3 py-1.5 text-[10px] flex items-center gap-1.5 ${i === 0 ? "bg-white/10 text-white" : "text-white/50"}`}>
+              <div className="w-3 h-3 rounded-sm bg-white/15 flex-shrink-0" />
+              <span className="truncate">{item}</span>
+            </div>
+          ))}
+        </div>
+        {/* Content */}
+        <div className="flex-1 p-3 bg-gray-50 overflow-hidden">
+          <div className="text-xs font-bold mb-2">Dashboard</div>
+          {/* Stat cards */}
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {[
+              { lbl: "Total Warga", val: "42",    color: "text-green-700" },
+              { lbl: "Sudah Bayar", val: "38",    color: "text-green-700" },
+              { lbl: "Belum Bayar", val: "4",     color: "text-red-600"   },
+              { lbl: "Kas RT",      val: "1,14jt",color: "text-blue-900"  },
+            ].map((s) => (
+              <div key={s.lbl} className="bg-white rounded p-1.5 border border-gray-100">
+                <div className="text-[7px] text-gray-500">{s.lbl}</div>
+                <div className={`text-xs font-bold ${s.color} mt-0.5`}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+          {/* Chart */}
+          <div className="bg-white rounded p-2 border border-gray-100 mb-1.5">
+            <div className="text-[9px] font-semibold mb-1.5">Pembayaran 6 Bulan</div>
+            <div className="flex items-end gap-1.5 h-12 px-1">
+              {bars.map(([g, r], i) => (
+                <div key={i} className="flex flex-col items-center flex-1 gap-0.5">
+                  <div className="flex gap-0.5 items-end">
+                    <div className="w-2 rounded-t-sm bg-green-700" style={{ height: g * 0.55 }} />
+                    <div className="w-2 rounded-t-sm bg-red-400"   style={{ height: r * 0.55 }} />
+                  </div>
+                  <div className="text-[6px] text-gray-400">{months[i]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Warga list */}
+          <div className="bg-white rounded p-1.5 border border-gray-100">
+            <div className="text-[9px] font-semibold mb-1">Warga Terbaru</div>
+            {warga.map((w) => (
+              <div key={w.name} className="flex items-center gap-1.5 py-0.5 border-b border-gray-50 last:border-0">
+                <div className={`w-4 h-4 rounded-full ${w.bg} flex items-center justify-center text-[6px] font-bold text-white flex-shrink-0`}>{w.init}</div>
+                <div className="text-[8px] flex-1 truncate">{w.name}</div>
+                <div className={`text-[7px] px-1.5 py-px rounded font-semibold ${w.bc}`}>{w.badge}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────
 export default function LandingPage() {
   return (
-    <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: "#212529", lineHeight: "1.6" }}>
+    <div className="font-sans text-gray-900 antialiased">
 
       {/* ── NAV ─────────────────────────────────────────────────── */}
-      <nav style={{ background: "white", borderBottom: "1px solid #e9ecef", padding: "0 5%", position: "sticky", top: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <div style={{ width: 36, height: 36, background: "#F5B800", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: "#1A3A6B" }}>RT</div>
-          <span style={{ fontWeight: 700, fontSize: 18, color: "#1A3A6B" }}><span style={{ color: "#F5B800" }}>RT</span>Mudah</span>
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
-          <a href="#fitur"      style={{ textDecoration: "none", color: "#6c757d", fontSize: 14, fontWeight: 500 }}>Fitur</a>
-          <a href="#cara-kerja" style={{ textDecoration: "none", color: "#6c757d", fontSize: 14, fontWeight: 500 }}>Cara Kerja</a>
-          <a href="#harga"      style={{ textDecoration: "none", color: "#6c757d", fontSize: 14, fontWeight: 500 }}>Harga</a>
-          <Link href="/login"    style={{ textDecoration: "none", color: "#6c757d", fontSize: 14, fontWeight: 500 }}>Masuk</Link>
-          <Link href="/register" style={{ background: "#F5B800", color: "#1A3A6B", padding: "8px 20px", borderRadius: 8, fontWeight: 700, fontSize: 14, textDecoration: "none" }}>
-            Coba Gratis
-          </Link>
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <Logo />
+          {/* Desktop nav links */}
+          <div className="hidden md:flex items-center gap-8">
+            <a href="#fitur"      className="text-sm text-gray-500 font-medium hover:text-blue-900 transition-colors">Fitur</a>
+            <a href="#cara-kerja" className="text-sm text-gray-500 font-medium hover:text-blue-900 transition-colors">Cara Kerja</a>
+            <a href="#harga"      className="text-sm text-gray-500 font-medium hover:text-blue-900 transition-colors">Harga</a>
+            <Link href="/login"   className="text-sm text-gray-500 font-medium hover:text-blue-900 transition-colors">Masuk</Link>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/login" className="md:hidden text-sm text-gray-600 font-medium px-3 py-1.5">
+              Masuk
+            </Link>
+            <Link href="/register" className="bg-yellow-400 text-blue-900 px-4 py-2 rounded-lg font-bold text-sm hover:bg-yellow-300 transition-colors">
+              Coba Gratis
+            </Link>
+          </div>
         </div>
       </nav>
 
       {/* ── HERO ─────────────────────────────────────────────────── */}
-      <section style={{ background: "linear-gradient(135deg, #1A3A6B 0%, #2D5AA0 100%)", color: "white", padding: "80px 5% 60px", display: "flex", alignItems: "center", gap: 60, minHeight: 560, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, maxWidth: 520, minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(245,184,0,0.15)", border: "1px solid rgba(245,184,0,0.3)", color: "#F5B800", padding: "6px 14px", borderRadius: 100, fontSize: 12, fontWeight: 600, marginBottom: 24, letterSpacing: "0.5px" }}>
-            ✦ Sekarang Live — Early Access Gratis
-          </div>
-          <h1 style={{ fontSize: 48, fontWeight: 800, lineHeight: 1.15, marginBottom: 20 }}>
-            Kelola RT Lebih <span style={{ color: "#F5B800" }}>Mudah</span>, Lebih Modern.
-          </h1>
-          <p style={{ fontSize: 17, color: "rgba(255,255,255,0.8)", marginBottom: 36, lineHeight: 1.7 }}>
-            Satu platform digital untuk data warga, iuran bulanan, pengumuman, dan laporan. Dibangun khusus untuk Ketua RT/RW Indonesia.
-          </p>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/register" style={{ background: "#F5B800", color: "#1A3A6B", padding: "14px 28px", borderRadius: 8, fontWeight: 700, fontSize: 15, textDecoration: "none" }}>
-              Mulai Gratis Sekarang
-            </Link>
-            <Link href="/login" style={{ background: "rgba(255,255,255,0.1)", color: "white", padding: "14px 28px", borderRadius: 8, fontWeight: 600, fontSize: 15, textDecoration: "none", border: "1px solid rgba(255,255,255,0.2)" }}>
-              Lihat Demo
-            </Link>
-          </div>
-          <p style={{ marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
-            Tidak perlu kartu kredit. Setup dalam 5 menit.
-          </p>
-        </div>
-
-        {/* Dashboard mockup */}
-        <div style={{ flex: 1, maxWidth: 540, minWidth: 300 }}>
-          <div style={{ background: "white", borderRadius: 12, overflow: "hidden", boxShadow: "0 24px 48px rgba(0,0,0,0.3)" }}>
-            <div style={{ background: "#1c1c1e", padding: "10px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f56" }}/>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#ffbd2e" }}/>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#27c93f" }}/>
-              <div style={{ background: "#3a3a3c", borderRadius: 4, padding: "3px 10px", fontSize: 11, color: "#8e8e93", marginLeft: 8 }}>rtmudah.com/dashboard</div>
+      <section className="bg-gradient-to-br from-blue-900 to-blue-700 text-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 flex flex-col lg:flex-row items-center gap-10 lg:gap-16">
+          {/* Text */}
+          <div className="flex-1 text-center lg:text-left max-w-lg mx-auto lg:mx-0">
+            <div className="inline-flex items-center gap-1.5 bg-yellow-400/15 border border-yellow-400/30 text-yellow-400 px-3.5 py-1.5 rounded-full text-xs font-semibold mb-6 tracking-wide">
+              ✦ Sekarang Live — Early Access Gratis
             </div>
-            <div style={{ display: "flex", height: 300 }}>
-              {/* Sidebar */}
-              <div style={{ width: 140, background: "#1a1a2e", padding: "16px 0", flexShrink: 0 }}>
-                <div style={{ padding: "0 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.1)", marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "white" }}>RTMudah</div>
-                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>Pilih RT di pengaturan</div>
-                </div>
-                {["Dashboard","Data Warga","Tagihan","Pengumuman","Laporan","Pengaturan"].map((item, i) => (
-                  <div key={item} style={{ padding: "7px 16px", fontSize: 10, color: i === 0 ? "white" : "rgba(255,255,255,0.5)", background: i === 0 ? "rgba(255,255,255,0.1)" : "transparent", display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 14, height: 14, background: "rgba(255,255,255,0.15)", borderRadius: 3, flexShrink: 0 }}/>
-                    {item}
-                  </div>
-                ))}
-              </div>
-              {/* Content */}
-              <div style={{ flex: 1, padding: 14, background: "#f8f9fa", overflow: "hidden" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Dashboard</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 5, marginBottom: 10 }}>
-                  {[
-                    { label: "Total Warga", val: "42", color: "#1B6B3A" },
-                    { label: "Sudah Bayar", val: "38", color: "#1B6B3A" },
-                    { label: "Belum Bayar", val: "4",  color: "#dc3545" },
-                    { label: "Kas RT",      val: "1,14jt", color: "#1A3A6B" },
-                  ].map((s) => (
-                    <div key={s.label} style={{ background: "white", borderRadius: 5, padding: "6px 8px", border: "1px solid #e9ecef" }}>
-                      <div style={{ fontSize: 8, color: "#6c757d" }}>{s.label}</div>
-                      <div style={{ fontSize: s.val.length > 3 ? 11 : 15, fontWeight: 700, color: s.color, margin: "2px 0" }}>{s.val}</div>
-                    </div>
-                  ))}
-                </div>
-                {/* Mini chart */}
-                <div style={{ background: "white", borderRadius: 5, padding: "8px", border: "1px solid #e9ecef", marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 600, marginBottom: 6 }}>Pembayaran 6 Bulan</div>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 56, padding: "0 4px" }}>
-                    {[
-                      [52,8],[44,12],[56,6],[48,10],[60,8],[52,14]
-                    ].map(([g,r], i) => (
-                      <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, gap: 1 }}>
-                        <div style={{ display: "flex", gap: 2, alignItems: "flex-end" }}>
-                          <div style={{ width: 8, height: g * 0.7, background: "#1B6B3A", borderRadius: "2px 2px 0 0" }}/>
-                          <div style={{ width: 8, height: r * 0.7, background: "#ef4444", borderRadius: "2px 2px 0 0" }}/>
-                        </div>
-                        <div style={{ fontSize: 7, color: "#adb5bd" }}>{["Jan","Feb","Mar","Apr","Mei","Jun"][i]}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {/* Warga list */}
-                <div style={{ background: "white", borderRadius: 5, padding: "6px 8px", border: "1px solid #e9ecef" }}>
-                  <div style={{ fontSize: 9, fontWeight: 600, marginBottom: 4 }}>Warga Terbaru</div>
-                  {[
-                    { init: "BS", name: "Budi Santoso",    color: "#1A3A6B", badge: "Aktif",   bc: "#d1fae5", tc: "#065f46" },
-                    { init: "SA", name: "Siti Aminah",     color: "#f59e0b", badge: "Pending", bc: "#fef3c7", tc: "#92400e" },
-                    { init: "AR", name: "Agus Riyanto",    color: "#8b5cf6", badge: "Aktif",   bc: "#d1fae5", tc: "#065f46" },
-                  ].map((w) => (
-                    <div key={w.name} style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 0", borderBottom: "1px solid #f1f3f5" }}>
-                      <div style={{ width: 16, height: 16, borderRadius: "50%", background: w.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 6, fontWeight: 700, color: "white", flexShrink: 0 }}>{w.init}</div>
-                      <div style={{ fontSize: 8, flex: 1 }}>{w.name}</div>
-                      <div style={{ fontSize: 7, padding: "1px 5px", borderRadius: 3, background: w.bc, color: w.tc, fontWeight: 600 }}>{w.badge}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight mb-5">
+              Kelola RT Lebih{" "}
+              <span className="text-yellow-400">Mudah</span>,{" "}
+              Lebih Modern.
+            </h1>
+            <p className="text-base sm:text-lg text-white/80 mb-8 leading-relaxed">
+              Satu platform digital untuk data warga, iuran bulanan, pengumuman, dan laporan.
+              Dibangun khusus untuk Ketua RT/RW Indonesia.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
+              <Link href="/register" className="bg-yellow-400 text-blue-900 px-6 py-3.5 rounded-lg font-bold text-sm sm:text-base hover:bg-yellow-300 transition-colors text-center">
+                Mulai Gratis Sekarang
+              </Link>
+              <Link href="/login" className="bg-white/10 border border-white/20 text-white px-6 py-3.5 rounded-lg font-semibold text-sm sm:text-base hover:bg-white/20 transition-colors text-center">
+                Lihat Demo
+              </Link>
             </div>
+            <p className="text-xs text-white/40 mt-4">Tidak perlu kartu kredit. Setup dalam 5 menit.</p>
+          </div>
+          {/* Mockup — hidden on small, visible md+ */}
+          <div className="flex-1 w-full max-w-sm sm:max-w-md lg:max-w-xl hidden sm:block">
+            <DashboardMockup />
           </div>
         </div>
       </section>
 
       {/* ── STATS BAR ────────────────────────────────────────────── */}
-      <div style={{ background: "#F5B800", padding: "20px 5%", display: "flex", justifyContent: "center", gap: 60, flexWrap: "wrap" }}>
-        {[
-          { num: "100%", lbl: "Open Early Access" },
-          { num: "5 mnt", lbl: "Setup pertama" },
-          { num: "Free", lbl: "Selama beta" },
-          { num: "HTTPS", lbl: "Data terenkripsi" },
-        ].map((s) => (
-          <div key={s.lbl} style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: "#1A3A6B" }}>{s.num}</div>
-            <div style={{ fontSize: 12, color: "#1A3A6B", opacity: 0.7, fontWeight: 600 }}>{s.lbl}</div>
-          </div>
-        ))}
+      <div className="bg-yellow-400 py-5">
+        <div className="max-w-4xl mx-auto px-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {STATS_BAR.map((s) => (
+            <div key={s.lbl} className="text-center">
+              <div className="text-2xl sm:text-3xl font-extrabold text-blue-900">{s.num}</div>
+              <div className="text-xs font-semibold text-blue-900/70 mt-0.5">{s.lbl}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── FEATURES ─────────────────────────────────────────────── */}
-      <section id="fitur" style={{ padding: "80px 5%" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#1B6B3A", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: 12 }}>Fitur Platform</div>
-        <h2 style={{ fontSize: 36, fontWeight: 800, marginBottom: 16 }}>Semua yang Ketua RT <span style={{ color: "#1B6B3A" }}>butuhkan</span></h2>
-        <p style={{ fontSize: 17, color: "#6c757d", maxWidth: 540, lineHeight: 1.7, marginBottom: 48 }}>
+      <section id="fitur" className="py-16 sm:py-20 px-4 sm:px-6 max-w-6xl mx-auto">
+        <div className="text-xs font-bold text-green-700 tracking-widest uppercase mb-3">Fitur Platform</div>
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-4">
+          Semua yang Ketua RT <span className="text-green-700">butuhkan</span>
+        </h2>
+        <p className="text-base sm:text-lg text-gray-500 max-w-xl mb-12 leading-relaxed">
           Dibangun dari nol dengan teknologi modern. Setiap fitur dirancang untuk menyederhanakan pekerjaan pengurus RT.
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
           {FEATURES.map((f) => (
-            <div key={f.title} style={{ background: "white", border: "1px solid #e9ecef", borderRadius: 12, padding: 28 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 8, background: f.bg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, fontSize: 22 }}>{f.icon}</div>
-              <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{f.title}</h3>
-              <p style={{ fontSize: 14, color: "#6c757d", lineHeight: 1.6 }}>{f.desc}</p>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 100, marginTop: 12, background: "#d1fae5", color: "#065f46" }}>
+            <div key={f.title} className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+              <div className={`w-12 h-12 ${f.bg} rounded-lg flex items-center justify-center text-2xl mb-4`}>{f.icon}</div>
+              <h3 className="text-base font-bold mb-2">{f.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+              <div className="inline-flex items-center gap-1 text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full mt-3">
                 ✓ Sudah live
               </div>
             </div>
@@ -265,104 +255,128 @@ export default function LandingPage() {
       </section>
 
       {/* ── HOW IT WORKS ─────────────────────────────────────────── */}
-      <section id="cara-kerja" style={{ padding: "80px 5%", background: "#f8f9fa" }}>
-        <div style={{ textAlign: "center", marginBottom: 48 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1B6B3A", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: 12 }}>Cara Kerja</div>
-          <h2 style={{ fontSize: 36, fontWeight: 800, marginBottom: 16 }}>Mulai dalam <span style={{ color: "#1B6B3A" }}>4 langkah</span></h2>
-          <p style={{ fontSize: 17, color: "#6c757d", maxWidth: 480, margin: "0 auto" }}>Tidak perlu keahlian teknis. Tidak perlu instalasi. Langsung dari browser.</p>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
-          {STEPS.map((s) => (
-            <div key={s.num} style={{ textAlign: "center", padding: 24 }}>
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#1B6B3A", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18, margin: "0 auto 16px" }}>{s.num}</div>
-              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>{s.title}</h3>
-              <p style={{ fontSize: 13, color: "#6c757d" }}>{s.desc}</p>
-            </div>
-          ))}
+      <section id="cara-kerja" className="bg-gray-50 py-16 sm:py-20 px-4 sm:px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <div className="text-xs font-bold text-green-700 tracking-widest uppercase mb-3">Cara Kerja</div>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-4">
+              Mulai dalam <span className="text-green-700">4 langkah</span>
+            </h2>
+            <p className="text-base sm:text-lg text-gray-500 max-w-md mx-auto">
+              Tidak perlu keahlian teknis. Tidak perlu instalasi. Langsung dari browser.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+            {STEPS.map((s) => (
+              <div key={s.num} className="text-center px-4">
+                <div className="w-12 h-12 rounded-full bg-green-700 text-white flex items-center justify-center font-extrabold text-lg mx-auto mb-4">
+                  {s.num}
+                </div>
+                <h3 className="text-sm font-bold mb-2">{s.title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{s.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ── PRICING ──────────────────────────────────────────────── */}
-      <section id="harga" style={{ padding: "80px 5%", textAlign: "center" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#1B6B3A", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: 12 }}>Harga</div>
-        <h2 style={{ fontSize: 36, fontWeight: 800, marginBottom: 16 }}>Transparan & <span style={{ color: "#1B6B3A" }}>Terjangkau</span></h2>
-        <p style={{ fontSize: 17, color: "#6c757d", maxWidth: 480, margin: "0 auto 48px" }}>Mulai gratis selama masa beta. Tidak ada biaya tersembunyi.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 24, maxWidth: 900, margin: "0 auto" }}>
-          {PLANS.map((p) => (
-            <div key={p.name} style={{ background: "white", border: p.featured ? "2px solid #1B6B3A" : "1px solid #e9ecef", borderRadius: 12, padding: 32, position: "relative" }}>
-              {p.featured && (
-                <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "#1B6B3A", color: "white", padding: "4px 16px", borderRadius: 100, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-                  Paling Populer
+      <section id="harga" className="py-16 sm:py-20 px-4 sm:px-6">
+        <div className="max-w-5xl mx-auto text-center">
+          <div className="text-xs font-bold text-green-700 tracking-widest uppercase mb-3">Harga</div>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-4">
+            Transparan & <span className="text-green-700">Terjangkau</span>
+          </h2>
+          <p className="text-base sm:text-lg text-gray-500 max-w-md mx-auto mb-12">
+            Mulai gratis selama masa beta. Tidak ada biaya tersembunyi.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            {PLANS.map((p) => (
+              <div key={p.name} className={`bg-white rounded-xl p-7 text-left relative ${p.featured ? "border-2 border-green-700 shadow-lg" : "border border-gray-200"}`}>
+                {p.featured && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-700 text-white px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap">
+                    Paling Populer
+                  </div>
+                )}
+                <div className="text-sm font-bold text-gray-500 mb-2">{p.name}</div>
+                <div className="text-3xl font-extrabold mb-1">
+                  {p.price}<span className="text-base font-medium text-gray-500">{p.period}</span>
                 </div>
-              )}
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#6c757d", marginBottom: 8 }}>{p.name}</div>
-              <div style={{ fontSize: 34, fontWeight: 800, color: "#212529", marginBottom: 4 }}>
-                {p.price}<span style={{ fontSize: 15, fontWeight: 500, color: "#6c757d" }}>{p.period}</span>
+                <div className="text-sm text-gray-500 mb-5 pb-5 border-b border-gray-100">{p.desc}</div>
+                <ul className="space-y-2 mb-6">
+                  {p.features.map((f) => (
+                    <li key={f} className="text-sm text-gray-700 flex items-center gap-2">
+                      <span className="text-green-700 font-bold">✓</span> {f}
+                    </li>
+                  ))}
+                </ul>
+                <Link href={p.href} className={`block w-full py-3 rounded-lg font-bold text-sm text-center transition-colors ${p.featured ? "bg-green-700 text-white hover:bg-green-800" : "bg-white text-gray-900 border border-gray-200 hover:bg-gray-50"}`}>
+                  {p.cta}
+                </Link>
               </div>
-              <div style={{ fontSize: 13, color: "#6c757d", marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #f1f3f5" }}>{p.desc}</div>
-              <ul style={{ listStyle: "none", marginBottom: 24, textAlign: "left" }}>
-                {p.features.map((f) => (
-                  <li key={f} style={{ fontSize: 13, color: "#495057", padding: "5px 0", display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ color: "#1B6B3A", fontWeight: 700 }}>✓</span> {f}
-                  </li>
-                ))}
-              </ul>
-              <Link href={p.href} style={{ display: "block", width: "100%", padding: 12, borderRadius: 8, fontWeight: 700, fontSize: 14, textAlign: "center", textDecoration: "none", background: p.featured ? "#1B6B3A" : "white", color: p.featured ? "white" : "#212529", border: p.featured ? "none" : "1.5px solid #e9ecef" }}>
-                {p.cta}
-              </Link>
-            </div>
-          ))}
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-8">
+            * Selama masa beta, semua fitur tersedia gratis. Harga di atas berlaku saat launch resmi.
+          </p>
         </div>
-        <p style={{ fontSize: 13, color: "#6c757d", marginTop: 32 }}>* Selama masa beta, semua fitur tersedia gratis. Harga di atas berlaku saat launch resmi.</p>
       </section>
 
       {/* ── CTA ──────────────────────────────────────────────────── */}
-      <section style={{ background: "#1A3A6B", color: "white", padding: "80px 5%", textAlign: "center" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#F5B800", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: 12 }}>Mulai Sekarang</div>
-        <h2 style={{ fontSize: 36, fontWeight: 800, color: "white", marginBottom: 16 }}>RT Anda layak punya sistem<br />yang lebih baik.</h2>
-        <p style={{ fontSize: 17, color: "rgba(255,255,255,0.7)", maxWidth: 480, margin: "0 auto 36px", lineHeight: 1.7 }}>
-          Bergabung dalam early access dan bantu kami membangun platform RT/RW terbaik di Indonesia.
-        </p>
-        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <Link href="/register" style={{ background: "#F5B800", color: "#1A3A6B", padding: "14px 28px", borderRadius: 8, fontWeight: 700, fontSize: 15, textDecoration: "none" }}>
-            Daftar Early Access — Gratis
-          </Link>
-          <a href="https://wa.me/6281234567890" style={{ background: "rgba(255,255,255,0.1)", color: "white", padding: "14px 28px", borderRadius: 8, fontWeight: 600, fontSize: 15, textDecoration: "none", border: "1px solid rgba(255,255,255,0.2)" }}>
-            Chat via WhatsApp
-          </a>
+      <section className="bg-blue-900 text-white py-16 sm:py-20 px-4 sm:px-6 text-center">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-xs font-bold text-yellow-400 tracking-widest uppercase mb-3">Mulai Sekarang</div>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white mb-4">
+            RT Anda layak punya sistem<br className="hidden sm:block" /> yang lebih baik.
+          </h2>
+          <p className="text-base sm:text-lg text-white/70 max-w-md mx-auto mb-8 leading-relaxed">
+            Bergabung dalam early access dan bantu kami membangun platform RT/RW terbaik di Indonesia.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/register" className="bg-yellow-400 text-blue-900 px-6 py-3.5 rounded-lg font-bold text-sm sm:text-base hover:bg-yellow-300 transition-colors">
+              Daftar Early Access — Gratis
+            </Link>
+            <a href="https://wa.me/6281234567890" className="bg-white/10 border border-white/20 text-white px-6 py-3.5 rounded-lg font-semibold text-sm sm:text-base hover:bg-white/20 transition-colors">
+              Chat via WhatsApp
+            </a>
+          </div>
         </div>
       </section>
 
       {/* ── FOOTER ───────────────────────────────────────────────── */}
-      <footer style={{ background: "#212529", color: "rgba(255,255,255,0.6)", padding: "48px 5% 32px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 40, marginBottom: 40, flexWrap: "wrap" }}>
-          <div>
-            <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", marginBottom: 12 }}>
-              <div style={{ width: 32, height: 32, background: "#F5B800", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, color: "#1A3A6B" }}>RT</div>
-              <span style={{ fontWeight: 700, fontSize: 16, color: "white" }}><span style={{ color: "#F5B800" }}>RT</span>Mudah</span>
-            </Link>
-            <p style={{ fontSize: 14, lineHeight: 1.6, maxWidth: 240 }}>Platform manajemen RT/RW digital untuk lingkungan yang lebih tertib, transparan, dan guyub.</p>
+      <footer className="bg-gray-900 text-white/60 py-12 px-4 sm:px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10 mb-10">
+            {/* Brand */}
+            <div>
+              <Logo white />
+              <p className="text-sm mt-3 leading-relaxed max-w-xs">
+                Platform manajemen RT/RW digital untuk lingkungan yang lebih tertib, transparan, dan guyub.
+              </p>
+            </div>
+            {/* Platform links */}
+            <div>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">Platform</h4>
+              <ul className="space-y-2">
+                {[["#fitur","Fitur"],["#cara-kerja","Cara Kerja"],["#harga","Harga"],["/login","Masuk"],["/register","Daftar"]].map(([href, label]) => (
+                  <li key={label}>
+                    <Link href={href} className="text-sm hover:text-white transition-colors">{label}</Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Contact */}
+            <div>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">Kontak</h4>
+              <ul className="space-y-2">
+                <li><a href="mailto:hello@rtmudah.com" className="text-sm hover:text-white transition-colors">hello@rtmudah.com</a></li>
+                <li><a href="https://wa.me/6281234567890" className="text-sm hover:text-white transition-colors">WhatsApp</a></li>
+              </ul>
+            </div>
           </div>
-          <div>
-            <h4 style={{ fontSize: 12, fontWeight: 700, color: "white", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Platform</h4>
-            <ul style={{ listStyle: "none" }}>
-              {[["#fitur","Fitur"],["#cara-kerja","Cara Kerja"],["#harga","Harga"],["/login","Masuk"],["/register","Daftar"]].map(([href, label]) => (
-                <li key={label} style={{ marginBottom: 8 }}>
-                  <Link href={href} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: 14 }}>{label}</Link>
-                </li>
-              ))}
-            </ul>
+          <div className="border-t border-white/10 pt-6 text-xs text-center">
+            © 2026 RTMudah. Dibangun dengan ❤️ untuk Indonesia.
           </div>
-          <div>
-            <h4 style={{ fontSize: 12, fontWeight: 700, color: "white", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>Kontak</h4>
-            <ul style={{ listStyle: "none" }}>
-              <li style={{ marginBottom: 8 }}><a href="mailto:hello@rtmudah.com" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: 14 }}>hello@rtmudah.com</a></li>
-              <li style={{ marginBottom: 8 }}><a href="https://wa.me/6281234567890" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: 14 }}>WhatsApp</a></li>
-            </ul>
-          </div>
-        </div>
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 24, fontSize: 13, textAlign: "center" }}>
-          © 2026 RTMudah. Dibangun dengan ❤️ untuk Indonesia.
         </div>
       </footer>
 

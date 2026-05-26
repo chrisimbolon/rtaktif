@@ -165,7 +165,8 @@ jobs:
             docker compose up -d --no-deps api
 
             echo "Starting Frontend with latest pre-built standalone..."
-            docker compose up -d --force-recreate frontend
+            docker compose down frontend
+            docker compose up -d frontend
 
             echo "Waiting for API health..."
             for i in $(seq 1 30); do

@@ -1,7 +1,7 @@
-// types/index.ts — COMPLETE type definitions
-// Replace your current types/index.ts entirely
+// types/index.ts — full type definitions for RTMudah
+// ─────────────────────────────────────────────────────────────────
 
-// ── Auth ──────────────────────────────────────────────────────────
+// ── Auth ─────────────────────────────────────────────────────────
 export type UserRole   = "warga" | "admin_rt" | "admin_rw" | "super_admin";
 export type UserStatus = "pending" | "active" | "suspended";
 
@@ -14,27 +14,11 @@ export interface AuthUser {
   rt_group_id: string | null;
 }
 
-export interface LoginPayload {
-  email:    string;
-  password: string;
-}
+export interface LoginPayload    { email: string; password: string; }
+export interface RegisterPayload { email: string; phone: string; password: string; full_name: string; rt_group_id?: string; }
+export interface TokenResponse   { access_token: string; token_type: string; }
 
-export interface RegisterPayload {
-  email:        string;
-  phone:        string;
-  password:     string;
-  full_name:    string;
-  rt_group_id?: string;
-}
-
-export interface TokenResponse {
-  access_token: string;
-  token_type:   string;
-  user_id?:     string;
-  role?:        string;
-}
-
-// ── RT Group ──────────────────────────────────────────────────────
+// ── RT Group ─────────────────────────────────────────────────────
 export interface RTGroup {
   id:              string;
   rt_number:       string;
@@ -44,8 +28,7 @@ export interface RTGroup {
   kota:            string;
   provinsi:        string;
   monthly_fee_idr: number;
-  display_name:    string;
-  is_active:       boolean;
+  display_name:    string;   // e.g. "RT 05/RW 02 — Padang Harapan"
 }
 
 // ── Warga ─────────────────────────────────────────────────────────
@@ -109,18 +92,6 @@ export interface Laporan {
   created_at:       string;
 }
 
-// ── Notification Log ──────────────────────────────────────────────
-export interface NotificationLog {
-  id:              string;
-  trigger_type:    string;
-  notif_type:      string;
-  recipient_count: number;
-  message_preview: string;
-  status:          string;
-  failed_count:    number;
-  sent_at:         string;
-}
-
 // ── Dashboard ─────────────────────────────────────────────────────
 export interface DashboardStats {
   total_warga:    number;
@@ -131,8 +102,26 @@ export interface DashboardStats {
   laporan_open:   number;
 }
 
-// ── API Error ─────────────────────────────────────────────────────
+// ── API Utilities ─────────────────────────────────────────────────
 export interface ApiError {
   detail: string;
   status: number;
+}
+
+// ── NextAuth augmentation ─────────────────────────────────────────
+// Extend NextAuth types so session.user has our custom fields
+import "next-auth";
+declare module "next-auth" {
+  interface Session {
+    backendToken: string;
+    user: {
+      id:          string;
+      email:       string;
+      name:        string;
+      full_name:   string;
+      role:        UserRole;
+      status:      UserStatus;
+      rt_group_id: string | null;
+    };
+  }
 }

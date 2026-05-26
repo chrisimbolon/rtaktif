@@ -53,7 +53,7 @@ const PLANS = [
 ];
 
 const STATS_BAR = [
-  { num: "100%", lbl: "Open Early Access" },
+  { num: "100%", lbl: "Buka Akses Awal" },
   { num: "5 mnt", lbl: "Setup pertama" },
   { num: "Free", lbl: "Selama beta" },
   { num: "HTTPS", lbl: "Data terenkripsi" },
@@ -191,7 +191,7 @@ export default function LandingPage() {
           {/* Text */}
           <div className="flex-1 text-center lg:text-left max-w-lg mx-auto lg:mx-0">
             <div className="inline-flex items-center gap-1.5 bg-yellow-400/15 border border-yellow-400/30 text-yellow-400 px-3.5 py-1.5 rounded-full text-xs font-semibold mb-6 tracking-wide">
-              ✦ Sekarang Live — Early Access Gratis
+              ✦ Sekarang Live — Akses Awal Gratis
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight mb-5">
               Kelola RT Lebih{" "}
@@ -330,11 +330,11 @@ export default function LandingPage() {
             RT Anda layak punya sistem<br className="hidden sm:block" /> yang lebih baik.
           </h2>
           <p className="text-base sm:text-lg text-white/70 max-w-md mx-auto mb-8 leading-relaxed">
-            Bergabung dalam early access dan bantu kami membangun platform RT/RW terbaik di Indonesia.
+            Bergabung dalam akses awal dan bantu kami membangun platform RT/RW terbaik di Indonesia.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/register" className="bg-yellow-400 text-blue-900 px-6 py-3.5 rounded-lg font-bold text-sm sm:text-base hover:bg-yellow-300 transition-colors">
-              Daftar Early Access — Gratis
+              Daftar Akses Awal — Gratis
             </Link>
             <a href="https://wa.me/6281234567890" className="bg-white/10 border border-white/20 text-white px-6 py-3.5 rounded-lg font-semibold text-sm sm:text-base hover:bg-white/20 transition-colors">
               Chat via WhatsApp

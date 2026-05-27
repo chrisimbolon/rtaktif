@@ -1,8 +1,10 @@
 # .github/workflows/deploy.yml
 # Build on GitHub runner → upload → deploy on Droplet
+#
 # Smart rebuild rules:
 #   - push:              only rebuild what changed (backend/ or frontend/)
 #   - workflow_dispatch: always rebuild EVERYTHING (emergency full deploy)
+#
 name: Deploy RTMudah to Production
 
 on:
@@ -41,17 +43,19 @@ jobs:
           echo "$CHANGED"
           echo "====================="
 
-          if echo "$CHANGED" | grep -q "^backend/"; then
+          # Backend changed if backend/ OR docker-compose.yml changed
+          if echo "$CHANGED" | grep -qE "^backend/|^docker-compose\.yml$"; then
             echo "backend=true"  >> $GITHUB_OUTPUT
-            echo "✅ Backend changed — will rebuild API"
+            echo "✅ Backend/compose changed — will rebuild API"
           else
             echo "backend=false" >> $GITHUB_OUTPUT
             echo "⏭️  Backend unchanged — skipping API rebuild"
           fi
 
-          if echo "$CHANGED" | grep -q "^frontend/"; then
+          # Frontend changed if frontend/ OR docker-compose.yml changed
+          if echo "$CHANGED" | grep -qE "^frontend/|^docker-compose\.yml$"; then
             echo "frontend=true"  >> $GITHUB_OUTPUT
-            echo "✅ Frontend changed — will rebuild Next.js"
+            echo "✅ Frontend/compose changed — will rebuild Next.js"
           else
             echo "frontend=false" >> $GITHUB_OUTPUT
             echo "⏭️  Frontend unchanged — skipping Next.js rebuild"

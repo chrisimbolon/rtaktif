@@ -7,6 +7,7 @@ export interface WargaUser {
   full_name:  string;
   email:      string;
   phone:      string | null;
+  block_unit: string | null;  // ← ADD THIS
   role:       string;
   status:     "pending" | "active" | "suspended";
   created_at: string | null;

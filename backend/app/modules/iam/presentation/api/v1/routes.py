@@ -145,6 +145,23 @@ async def assign_role(
         return {"id": str(user.id), "role": user.role}
     except (EntityNotFoundError, UnauthorizedError) as e:
         raise HTTPException(status_code=400, detail=e.message)
+    
+# ── add a DELETE/suspend endpoint ───────────────────────────────────────
+@router.patch("/users/{user_id}/suspend", tags=["Users"])
+async def suspend_user(
+    user_id: UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Suspend a user — admin only."""
+    repo = PgUserRepository(db)
+    user = await repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    user.status = "suspended"
+    await repo.save(user)
+    await db.commit()
+    return {"id": str(user.id), "status": user.status}
 
 
 # ── RT Groups ─────────────────────────────────────────────────────
@@ -201,23 +218,39 @@ async def create_rt_group(
     except IntegrityError as e:
         raise HTTPException(status_code=409, detail=_integrity_message(e))
 
-
 @router.get("/rt-groups/{rt_group_id}/members", tags=["RT Groups"])
 async def get_rt_members(
     rt_group_id: UUID,
+    status:      Optional[str] = None,   # pending | active | suspended
+    role:        Optional[str] = None,   # warga | admin_rt
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    List members of an RT group.
+    Optional filters: ?status=pending, ?status=active, ?role=warga
+    """
     users = await PgUserRepository(db).get_by_rt_group(rt_group_id)
+
+    # Apply optional filters
+    if status:
+        users = [u for u in users if u.status == status]
+    if role:
+        users = [u for u in users if u.role == role]
+
     return [
         {
             "id":        str(u.id),
             "full_name": u.full_name,
+            "email":     u.email,
+            "phone":     getattr(u, "phone", None),
             "role":      u.role,
             "status":    u.status,
+            "created_at": str(u.created_at) if hasattr(u, "created_at") else None,
         }
         for u in users
     ]
+
 
 # ── GET /rt-groups/{rt_group_id} ─────────────────────────────────────────────
 @router.get("/rt-groups/{rt_group_id}", tags=["RT Groups"])
@@ -289,3 +322,4 @@ async def update_rt_group(
         "monthly_fee_idr": rt.monthly_fee_idr,
         "display_name":    rt.display_name,
     }
+

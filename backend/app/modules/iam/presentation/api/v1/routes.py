@@ -158,6 +158,28 @@ class UpdateRTGroupRequest(BaseModel):
     monthly_fee_idr: Optional[int] = None
 
 
+@router.get("/rt-groups", tags=["RT Groups"])
+async def list_rt_groups(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all RT groups — public endpoint, no auth required.
+    Used by the register page so warga can pick their RT.
+    """
+    rt_groups = await PgRTGroupRepository(db).get_all()
+    return [
+        {
+            "id":           str(rt.id),
+            "display_name": rt.display_name,
+            "rt_number":    rt.rt_number,
+            "rw_number":    rt.rw_number,
+            "kelurahan":    rt.kelurahan,
+            "kecamatan":    rt.kecamatan,
+            "kota":         rt.kota,
+        }
+        for rt in rt_groups
+    ]
+
 @router.post("/rt-groups", status_code=201, tags=["RT Groups"])
 async def create_rt_group(
     body: CreateRTGroupRequest,

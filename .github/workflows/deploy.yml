@@ -1,6 +1,10 @@
 # .github/workflows/deploy.yml
 # Build on GitHub runner → upload → deploy on Droplet
-# Smart rebuild: backend only rebuilds when backend/ files change
+#
+# Smart rebuild rules:
+#   - push:              only rebuild what changed (backend/ or frontend/)
+#   - workflow_dispatch: always rebuild EVERYTHING (emergency full deploy)
+#
 name: Deploy RTMudah to Production
 
 on:
@@ -25,29 +29,37 @@ jobs:
       - name: Detect changed paths
         id: changes
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD)
-          echo "Changed files:"
-          echo "$CHANGED"
+          # ── Manual trigger → always rebuild everything ───────
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "backend=true"  >> $GITHUB_OUTPUT
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "🔧 Manual trigger — deploying EVERYTHING"
+            exit 0
+          fi
 
-          # Backend changed if any file under backend/ changed
+          # ── Push → check what actually changed ───────────────
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "=== Changed files ==="
+          echo "$CHANGED"
+          echo "====================="
+
           if echo "$CHANGED" | grep -q "^backend/"; then
             echo "backend=true"  >> $GITHUB_OUTPUT
-            echo "✅ Backend changed — will rebuild"
+            echo "✅ Backend changed — will rebuild API"
           else
             echo "backend=false" >> $GITHUB_OUTPUT
-            echo "⏭️  Backend unchanged — skip rebuild"
+            echo "⏭️  Backend unchanged — skipping API rebuild"
           fi
 
-          # Frontend changed if any frontend/ file changed
           if echo "$CHANGED" | grep -q "^frontend/"; then
             echo "frontend=true"  >> $GITHUB_OUTPUT
-            echo "✅ Frontend changed — will rebuild"
+            echo "✅ Frontend changed — will rebuild Next.js"
           else
             echo "frontend=false" >> $GITHUB_OUTPUT
-            echo "⏭️  Frontend unchanged — skip rebuild"
+            echo "⏭️  Frontend unchanged — skipping Next.js rebuild"
           fi
 
-      # ── 3. Backend tests ─────────────────────────────────────
+      # ── 3. Backend tests (only if backend changed) ───────────
       - name: Setup Python
         if: steps.changes.outputs.backend == 'true'
         uses: actions/setup-python@v5
@@ -69,7 +81,7 @@ jobs:
           SECRET_KEY:     ci-secret-key-min-32-characters-long
           JWT_SECRET_KEY: ci-jwt-secret-min-32-characters-long
 
-      # ── 4. Build Next.js frontend ────────────────────────────
+      # ── 4. Build Next.js (only if frontend changed) ──────────
       - name: Setup Node
         if: steps.changes.outputs.frontend == 'true'
         uses: actions/setup-node@v4
@@ -91,7 +103,7 @@ jobs:
           NEXTAUTH_SECRET:      ${{ secrets.NEXTAUTH_SECRET }}
           NEXTAUTH_URL:         https://rtmudah.com
 
-      # ── 5. Write production .env ─────────────────────────────
+      # ── 5. Write production .env (always) ────────────────────
       - name: Write .env file
         env:
           SECRET_KEY:        ${{ secrets.SECRET_KEY }}
@@ -129,7 +141,7 @@ jobs:
             "DO_SPACES_ENDPOINT=https://sgp1.digitaloceanspaces.com" \
             > .env
 
-      # ── 6. Set up SSH ────────────────────────────────────────
+      # ── 6. Set up SSH (always) ────────────────────────────────
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
@@ -137,13 +149,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # ── 7. Upload .env ───────────────────────────────────────
+      # ── 7. Upload .env (always) ───────────────────────────────
       - name: Upload .env file
         run: |
           rsync -avz .env \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/apps/rtmudah/.env
 
-      # ── 8. Upload frontend build (only if changed) ───────────
+      # ── 8. Upload frontend build (only if frontend changed) ───
       - name: Upload Next.js standalone build
         if: steps.changes.outputs.frontend == 'true'
         run: |
@@ -163,7 +175,7 @@ jobs:
             echo "frontend/public empty — skipping"
           fi
 
-      # ── 9. Deploy backend (only if changed) ──────────────────
+      # ── 9. Deploy backend (only if backend changed) ───────────
       - name: Deploy backend
         if: steps.changes.outputs.backend == 'true'
         run: |
@@ -193,15 +205,17 @@ jobs:
             docker compose run --rm migrate || echo "Migrations done"
 
             echo "=== Restarting API ==="
-            docker stop rtmudah_api  2>/dev/null || true
-            docker rm   rtmudah_api  2>/dev/null || true
+            docker stop rtmudah_api 2>/dev/null || true
+            docker rm   rtmudah_api 2>/dev/null || true
             docker compose up -d --no-deps api
             echo "=== API restarted ==="
           ENDSSH
 
-      # ── 10. Pull latest code if only frontend changed ────────
+      # ── 10. Pull code if only frontend changed ────────────────
       - name: Pull latest code (frontend-only deploy)
-        if: steps.changes.outputs.backend == 'false'
+        if: >
+          steps.changes.outputs.backend == 'false' &&
+          steps.changes.outputs.frontend == 'true'
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
             set -e
@@ -210,7 +224,7 @@ jobs:
             git pull origin main
           ENDSSH
 
-      # ── 11. Deploy frontend ───────────────────────────────────
+      # ── 11. Deploy frontend (only if frontend changed) ────────
       - name: Deploy frontend
         if: steps.changes.outputs.frontend == 'true'
         run: |
@@ -218,7 +232,7 @@ jobs:
             set -e
             cd /home/apps/rtmudah
 
-            echo "=== Restarting frontend ==="
+            echo "=== Restarting frontend with new build ==="
             docker stop rtmudah_frontend 2>/dev/null || true
             docker rm   rtmudah_frontend 2>/dev/null || true
             docker compose up -d --no-deps frontend
@@ -228,14 +242,14 @@ jobs:
             docker ps | grep rtmudah
           ENDSSH
 
-      # ── 12. Health check + Caddy reload ──────────────────────
+      # ── 12. Health check + Caddy reload (always) ──────────────
       - name: Health check and Caddy reload
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
             echo "=== Waiting for API health ==="
             for i in $(seq 1 30); do
               docker exec rtmudah_api curl -sf http://localhost:8000/health \
-                > /dev/null 2>&1 && echo "API healthy!" && break
+                > /dev/null 2>&1 && echo "API healthy! ✅" && break
               echo "Waiting... ($i/30)"
               [ "$i" -eq 30 ] && echo "API timeout!" && exit 1
               sleep 3

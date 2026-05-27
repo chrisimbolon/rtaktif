@@ -91,6 +91,14 @@ class PgRTGroupRepository(RTGroupRepository):
     async def get_by_id(self, entity_id: UUID) -> Optional[RTGroup]:
         row = await self.session.get(RTGroupModel, entity_id)
         return self._to_entity(row) if row else None
+    
+    async def get_all(self) -> list[RTGroup]:
+        """Fetch all RT groups — used by register page dropdown."""
+        result = await self.session.execute(
+            select(RTGroupModel).order_by(RTGroupModel.kota, RTGroupModel.rt_number)
+        )
+        rows = result.scalars().all()
+        return [self._to_entity(row) for row in rows]
 
     async def get_by_admin(self, admin_user_id: UUID) -> Optional[RTGroup]:
         result = await self.session.execute(

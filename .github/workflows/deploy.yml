@@ -1,9 +1,8 @@
 # .github/workflows/deploy.yml
-#
+# Build on GitHub runner → upload → deploy on Droplet
 # Smart rebuild rules:
 #   - push:              only rebuild what changed (backend/ or frontend/)
 #   - workflow_dispatch: always rebuild EVERYTHING (emergency full deploy)
-#
 name: Deploy RTMudah to Production
 
 on:

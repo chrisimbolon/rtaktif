@@ -1,15 +1,27 @@
+#  backend/app/modules/tagihan/presentation/api/v1/routes.py 
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.core.exceptions import EntityNotFoundError
-from app.modules.tagihan.application.schemas import GenerateBulkRequest, ConfirmPaymentRequest
-from app.modules.tagihan.application.use_cases.generate_bulk_invoices import GenerateBulkInvoices
-from app.modules.tagihan.application.use_cases.confirm_payment import ConfirmPayment
-from app.modules.tagihan.application.use_cases.mark_overdue import MarkOverdueInvoices
+from app.modules.iam.infrastructure.models import UserModel
+from app.modules.tagihan.application.schemas import (ConfirmPaymentRequest,
+                                                     GenerateBulkRequest)
+from app.modules.tagihan.application.use_cases.confirm_payment import \
+    ConfirmPayment
+from app.modules.tagihan.application.use_cases.generate_bulk_invoices import \
+    GenerateBulkInvoices
+from app.modules.tagihan.application.use_cases.mark_overdue import \
+    MarkOverdueInvoices
 from app.modules.tagihan.infrastructure.repository import PgInvoiceRepository
+from app.modules.warga.infrastructure.models import ResidentModel  # ← ADD
 from app.modules.warga.infrastructure.repository import PgResidentRepository
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+MONTHS_ID = ["","Januari","Februari","Maret","April","Mei","Juni",
+             "Juli","Agustus","September","Oktober","November","Desember"]
 
 router = APIRouter()
 
@@ -29,18 +41,51 @@ async def generate_bulk(
     )
     return {"invoices_created": len(invoices)}
 
-
 @router.get("/tagihan/rt/{rt_group_id}", tags=["Tagihan"])
 async def get_invoices_by_period(
-    rt_group_id: UUID, year: int, month: int,
+    rt_group_id: UUID,
+    year:  int,
+    month: int,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    invoices = await PgInvoiceRepository(db).get_by_rt_and_period(rt_group_id, year, month)
-    return [{"id": str(i.id), "resident_id": str(i.resident_id),
-             "period": i.period_label, "amount_idr": i.amount_idr,
-             "status": i.status} for i in invoices]
+    """List invoices for a period — enriched with resident full_name."""
+    invoices = await PgInvoiceRepository(db).get_by_rt_and_period(
+        rt_group_id, year, month
+    )
+    if not invoices:
+        return []
 
+    # Batch-fetch resident → user name mapping
+    resident_ids = [inv.resident_id for inv in invoices]
+    result = await db.execute(
+        select(ResidentModel.id, ResidentModel.user_id)
+        .where(ResidentModel.id.in_(resident_ids))
+    )
+    resident_user_map = {row.id: row.user_id for row in result.all()}
+
+    user_ids = list(resident_user_map.values())
+
+    user_result = await db.execute(
+        select(UserModel.id, UserModel.full_name)
+        .where(UserModel.id.in_(user_ids))
+    )
+    user_name_map = {row.id: row.full_name for row in user_result.all()}
+
+    # Build enriched response
+    return [
+        {
+            "id":            str(inv.id),
+            "resident_id":   str(inv.resident_id),
+            "resident_name": user_name_map.get(
+                resident_user_map.get(inv.resident_id), ""
+            ) or "",
+            "period": f"{MONTHS_ID[inv.period_month]} {inv.period_year}",
+            "amount_idr":    inv.amount_idr,
+            "status":        inv.status,
+        }
+        for inv in invoices
+    ]
 
 @router.get("/tagihan/unpaid/{rt_group_id}", tags=["Tagihan"])
 async def get_unpaid(
@@ -50,9 +95,9 @@ async def get_unpaid(
 ):
     invoices = await PgInvoiceRepository(db).get_unpaid_by_rt(rt_group_id)
     return [{"id": str(i.id), "resident_id": str(i.resident_id),
-             "period": i.period_label, "amount_idr": i.amount_idr,
+             "period": f"{MONTHS_ID[i.period_month]} {i.period_year}",
+             "amount_idr": i.amount_idr,
              "status": i.status} for i in invoices]
-
 
 @router.patch("/tagihan/{invoice_id}/confirm-payment", tags=["Tagihan"])
 async def confirm_payment(

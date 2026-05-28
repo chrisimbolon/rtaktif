@@ -1,40 +1,123 @@
 // lib/api/tagihan.ts
-import type { Invoice } from "@/types";
+// API client for Tagihan — matches existing backend schema exactly:
+//   - uses year + month integers (not period_label string)
+//   - uses /tagihan/generate-bulk (not /rt-groups/{id}/invoices/generate)
+//   - uses /tagihan/{id}/confirm-payment (not /invoices/{id}/pay)
+//   - resident_id references residents table (not users)
 import apiClient from "./client";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type InvoiceStatus = "issued" | "paid" | "overdue" | "cancelled";
+export type PaymentMethod = "cash" | "bank_transfer" | "qris" | "other";
+
+export interface Invoice {
+  id:          string;
+  resident_id: string;
+  period:      string;   // backend returns period_label string in response
+  amount_idr:  number;
+  status:      InvoiceStatus;
+  // enriched client-side from warga list
+  resident_name?: string;
+}
+
+export interface GenerateBulkResult {
+  invoices_created: number;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+export function formatRupiah(amount: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style:                 "currency",
+    currency:              "IDR",
+    minimumFractionDigits: 0,
+  }).format(amount);
+}
+
+// Returns { year, month } for a given Date
+export function dateToYearMonth(date = new Date()) {
+  return { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
+// Human-readable label from year + month
+export function periodLabel(year: number, month: number): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    month: "long", year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
+
+// Last N months as { year, month, label } objects
+export function getPeriodOptions(count = 6) {
+  const now = new Date();
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return {
+      year:  d.getFullYear(),
+      month: d.getMonth() + 1,
+      label: new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric" }).format(d),
+    };
+  });
+}
+
+// ── API calls — matching existing backend routes exactly ──────────────────────
+
+export async function generateBulkInvoices(
+  rtGroupId:  string,
+  year:       number,
+  month:      number,
+  amountIdr:  number,
+): Promise<GenerateBulkResult> {
+  const { data } = await apiClient.post<GenerateBulkResult>(
+    "/tagihan/generate-bulk",
+    { rt_group_id: rtGroupId, year, month, amount_idr: amountIdr }
+  );
+  return data;
+}
+
+export async function getInvoicesByPeriod(
+  rtGroupId: string,
+  year:      number,
+  month:     number,
+): Promise<Invoice[]> {
+  const { data } = await apiClient.get<Invoice[]>(
+    `/tagihan/rt/${rtGroupId}?year=${year}&month=${month}`
+  );
+  return data;
+}
+
+export async function getUnpaidInvoices(rtGroupId: string): Promise<Invoice[]> {
+  const { data } = await apiClient.get<Invoice[]>(
+    `/tagihan/unpaid/${rtGroupId}`
+  );
+  return data;
+}
+
+export async function confirmPayment(
+  invoiceId: string,
+  method:    PaymentMethod = "cash",
+  buktiUrl?: string,
+): Promise<{ id: string; status: string }> {
+  const { data } = await apiClient.patch(
+    `/tagihan/${invoiceId}/confirm-payment`,
+    { method, bukti_url: buktiUrl ?? null }
+  );
+  return data;
+}
+
+export async function markOverdueByRT(rtGroupId: string): Promise<{ marked_overdue: number }> {
+  const { data } = await apiClient.post(`/tagihan/mark-overdue/${rtGroupId}`);
+  return data;
+}
+
+// ── Legacy compat for useTagihan hook ────────────────────────────────────────
 export const tagihanApi = {
-  // Get invoices by period
-  byPeriod: async (rtGroupId: string, year: number, month: number): Promise<Invoice[]> => {
-    const res = await apiClient.get(`/tagihan/rt/${rtGroupId}`, { params: { year, month } });
-    return res.data;
-  },
-
-  // Get all unpaid invoices for an RT
-  unpaid: async (rtGroupId: string): Promise<Invoice[]> => {
-    const res = await apiClient.get(`/tagihan/unpaid/${rtGroupId}`);
-    return res.data;
-  },
-
-  // Generate bulk invoices for all active residents
-  generateBulk: async (data: {
-    rt_group_id: string; year: number; month: number; amount_idr: number;
-  }): Promise<{ invoices_created: number }> => {
-    const res = await apiClient.post("/tagihan/generate-bulk", data);
-    return res.data;
-  },
-
-  // Confirm a payment
-  confirmPayment: async (
-    invoiceId: string,
-    data: { method: string; bukti_url?: string }
-  ): Promise<Invoice> => {
-    const res = await apiClient.patch(`/tagihan/${invoiceId}/confirm-payment`, data);
-    return res.data;
-  },
-
-  // Mark overdue invoices
-  markOverdue: async (rtGroupId: string): Promise<{ marked_overdue: number }> => {
-    const res = await apiClient.post(`/tagihan/mark-overdue/${rtGroupId}`);
-    return res.data;
-  },
+  generateBulk:   generateBulkInvoices,
+  getByPeriod:    getInvoicesByPeriod,
+  getUnpaid:      getUnpaidInvoices,
+  confirmPayment,
+  markOverdue:    markOverdueByRT,
+  formatRupiah,
+  periodLabel,
+  getPeriodOptions,
 };

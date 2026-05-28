@@ -115,6 +115,7 @@ export const tagihanApi = {
   generateBulk:   generateBulkInvoices,
   getByPeriod:    getInvoicesByPeriod,
   getUnpaid:      getUnpaidInvoices,
+  unpaid:         getUnpaidInvoices,
   confirmPayment,
   markOverdue:    markOverdueByRT,
   formatRupiah,

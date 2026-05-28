@@ -110,14 +110,23 @@ export async function markOverdueByRT(rtGroupId: string): Promise<{ marked_overd
   return data;
 }
 
-// ── Legacy compat for useTagihan hook ────────────────────────────────────────
 export const tagihanApi = {
-  generateBulk:   generateBulkInvoices,
-  getByPeriod:    getInvoicesByPeriod,
-  getUnpaid:      getUnpaidInvoices,
-  unpaid:         getUnpaidInvoices,
-  confirmPayment,
-  markOverdue:    markOverdueByRT,
+  // Hook expects: tagihanApi.unpaid(rtGroupId)
+  unpaid: (rtGroupId: string) => getUnpaidInvoices(rtGroupId),
+
+  // Hook expects: tagihanApi.byPeriod(rtGroupId, year, month)
+  byPeriod: (rtGroupId: string, year: number, month: number) =>
+    getInvoicesByPeriod(rtGroupId, year, month),
+
+  // Hook expects: tagihanApi.generateBulk({ rt_group_id, year, month, amount_idr })
+  generateBulk: (data: { rt_group_id: string; year: number; month: number; amount_idr: number }) =>
+    generateBulkInvoices(data.rt_group_id, data.year, data.month, data.amount_idr),
+
+  // Hook expects: tagihanApi.confirmPayment(id, { method, bukti_url })
+  confirmPayment: (id: string, body: { method: string; bukti_url?: string }) =>
+    confirmPayment(id, body.method as PaymentMethod, body.bukti_url),
+
+  markOverdue: markOverdueByRT,
   formatRupiah,
   periodLabel,
   getPeriodOptions,

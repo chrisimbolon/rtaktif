@@ -1,6 +1,5 @@
 # .github/workflows/deploy.yml
 # Build on GitHub runner → upload → deploy on Droplet
-#
 # Smart rebuild rules:
 #   - push:              only rebuild what changed (backend/ or frontend/)
 #   - workflow_dispatch: always rebuild EVERYTHING (emergency full deploy)
@@ -188,8 +187,8 @@ jobs:
             echo "=== Pulling latest code ==="
             git pull origin main
 
-            echo "=== Building backend (layer cache) ==="
-            docker compose build api migrate
+            echo "=== Building backend (no cache — always picks up latest code) ==="
+            docker compose build --no-cache api migrate
 
             echo "=== Starting DB + Redis ==="
             docker compose up -d db redis

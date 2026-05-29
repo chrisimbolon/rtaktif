@@ -3,32 +3,28 @@ IAM routes — all endpoints for auth, users, and RT groups.
 IntegrityError caught at every write endpoint to prevent 500s
 from DB-level unique constraint violations.
 """
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from typing import Optional
-from pydantic import BaseModel
+from uuid import UUID
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
-from app.core.exceptions import (
-    DuplicateEntityError, UnauthorizedError,
-    ValidationError, EntityNotFoundError,
-)
-from app.modules.iam.application.schemas import (
-    RegisterUserRequest, LoginRequest, CreateRTGroupRequest,
-)
-from app.modules.iam.application.use_cases.register_user import RegisterUser
-from app.modules.iam.application.use_cases.login_user import LoginUser
-from app.modules.iam.application.use_cases.verify_user import VerifyUser
-from app.modules.iam.application.use_cases.create_rt_group import CreateRTGroup
+from app.core.exceptions import (DuplicateEntityError, EntityNotFoundError,
+                                 UnauthorizedError, ValidationError)
+from app.modules.iam.application.schemas import (CreateRTGroupRequest,
+                                                 LoginRequest,
+                                                 RegisterUserRequest)
 from app.modules.iam.application.use_cases.assign_role import AssignRole
-from app.modules.iam.infrastructure.repository import (
-    PgUserRepository, PgRTGroupRepository,
-)
+from app.modules.iam.application.use_cases.create_rt_group import CreateRTGroup
+from app.modules.iam.application.use_cases.login_user import LoginUser
+from app.modules.iam.application.use_cases.register_user import RegisterUser
+from app.modules.iam.application.use_cases.verify_user import VerifyUser
+from app.modules.iam.infrastructure.repository import (PgRTGroupRepository,
+                                                       PgUserRepository)
+from app.modules.warga.infrastructure.repository import PgResidentRepository
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -120,7 +116,11 @@ async def verify_user(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        user = await VerifyUser(PgUserRepository(db)).execute(
+        user = await VerifyUser(
+            PgUserRepository(db),
+            PgResidentRepository(db),      # ← NEW: auto-create resident
+            PgRTGroupRepository(db),       # ← NEW: fetch RT for address
+        ).execute(
             user_id=user_id,
             verified_by=UUID(current_user["user_id"]),
         )

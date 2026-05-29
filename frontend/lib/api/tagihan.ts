@@ -110,6 +110,49 @@ export async function markOverdueByRT(rtGroupId: string): Promise<{ marked_overd
   return data;
 }
 
+export interface PeriodChartData {
+  month:    string;   // "Jan", "Feb", etc
+  lunas:    number;   // count of paid invoices
+  belum:    number;   // count of issued + overdue
+  kas:      number;   // total IDR collected
+}
+
+/**
+ * Fetches invoice data for the last N months and returns chart-ready data.
+ * Makes N parallel API calls — one per month.
+ */
+export async function getChartData(
+  rtGroupId: string,
+  monthsBack = 6,
+): Promise<PeriodChartData[]> {
+  const now     = new Date();
+  const periods = Array.from({ length: monthsBack }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (monthsBack - 1 - i), 1);
+    return {
+      year:  d.getFullYear(),
+      month: d.getMonth() + 1,
+      label: d.toLocaleDateString("id-ID", { month: "short" }), // "Jan", "Feb" etc
+    };
+  });
+
+  // Fetch all periods in parallel
+  const results = await Promise.allSettled(
+    periods.map(p => getInvoicesByPeriod(rtGroupId, p.year, p.month))
+  );
+
+  return periods.map((p, i) => {
+    const result   = results[i];
+    const invoices = result.status === "fulfilled" ? result.value : [];
+    return {
+      month: p.label,
+      lunas: invoices.filter(inv => inv.status === "paid").length,
+      belum: invoices.filter(inv => inv.status === "issued" || inv.status === "overdue").length,
+      kas:   invoices.filter(inv => inv.status === "paid")
+                     .reduce((s, inv) => s + inv.amount_idr, 0),
+    };
+  });
+}
+
 export const tagihanApi = {
   // Hook expects: tagihanApi.unpaid(rtGroupId)
   unpaid: (rtGroupId: string) => getUnpaidInvoices(rtGroupId),

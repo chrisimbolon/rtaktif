@@ -93,11 +93,39 @@ async def get_unpaid(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    """List unpaid invoices — enriched with resident full_name."""
     invoices = await PgInvoiceRepository(db).get_unpaid_by_rt(rt_group_id)
-    return [{"id": str(i.id), "resident_id": str(i.resident_id),
-             "period": f"{MONTHS_ID[i.period_month]} {i.period_year}",
-             "amount_idr": i.amount_idr,
-             "status": i.status} for i in invoices]
+    if not invoices:
+        return []
+
+    # Batch-fetch resident → user name mapping (same pattern as get_invoices_by_period)
+    resident_ids = [inv.resident_id for inv in invoices]
+    result = await db.execute(
+        select(ResidentModel.id, ResidentModel.user_id)
+        .where(ResidentModel.id.in_(resident_ids))
+    )
+    resident_user_map = {row.id: row.user_id for row in result.all()}
+
+    user_ids = list(resident_user_map.values())
+    user_result = await db.execute(
+        select(UserModel.id, UserModel.full_name)
+        .where(UserModel.id.in_(user_ids))
+    )
+    user_name_map = {row.id: row.full_name for row in user_result.all()}
+
+    return [
+        {
+            "id":            str(inv.id),
+            "resident_id":   str(inv.resident_id),
+            "resident_name": user_name_map.get(
+                resident_user_map.get(inv.resident_id), ""
+            ) or "",
+            "period":        f"{MONTHS_ID[inv.period_month]} {inv.period_year}",
+            "amount_idr":    inv.amount_idr,
+            "status":        inv.status,
+        }
+        for inv in invoices
+    ]
 
 @router.patch("/tagihan/{invoice_id}/confirm-payment", tags=["Tagihan"])
 async def confirm_payment(

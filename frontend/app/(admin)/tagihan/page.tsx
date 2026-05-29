@@ -19,7 +19,6 @@ import {
   periodLabel,
   type Invoice
 } from "@/lib/api/tagihan";
-import { getWargaList } from "@/lib/api/warga";
 import { useRTStore } from "@/store/rt.store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -297,23 +296,21 @@ export default function TagihanPage() {
   // Backend invoices use residents.id, warga list uses users.id
   // We match by position/name since we don't have resident→user mapping yet
   // Simple approach: show resident_id truncated if no match found
-  const { data: wargaList = [] } = useQuery({
-    queryKey: ["warga", rtGroupId, "all"],
-    queryFn:  () => getWargaList(rtGroupId!, "all"),
-    enabled:  !!rtGroupId,
-    staleTime: 60_000,
-  });
+  // const { data: wargaList = [] } = useQuery({
+  //   queryKey: ["warga", rtGroupId, "all"],
+  //   queryFn:  () => getWargaList(rtGroupId!, "all"),
+  //   enabled:  !!rtGroupId,
+  //   staleTime: 60_000,
+  // });
 
   // Build a name map — warga full_name indexed by their user id
   // Note: invoices.resident_id = residents.id (different from users.id)
   // Until we have a residents endpoint, we show a friendly truncated ID
   const getResidentName = (residentId: string): string => {
-    // Try to match by index order as a best-effort fallback
-    // TODO: add GET /residents/{id} endpoint to get exact name
     const short = residentId.slice(0, 8).toUpperCase();
     return `Warga (${short})`;
   };
-
+  
   // ── Mutations ───────────────────────────────────────────────────────────────
   const confirmMutation = useMutation({
     mutationFn: (id: string) => confirmPayment(id, "cash"),
@@ -508,7 +505,7 @@ export default function TagihanPage() {
               <InvoiceRow
                 key={inv.id}
                 invoice={inv}
-                residentName={getResidentName(inv.resident_id)}
+                residentName={inv.resident_name || getResidentName(inv.resident_id)}
                 onConfirm={(id) => confirmMutation.mutate(id)}
                 onOverdue={(id) => {
                   // Individual overdue — use RT-wide endpoint as workaround

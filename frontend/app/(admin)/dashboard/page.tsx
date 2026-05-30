@@ -7,8 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle, ChevronRight,
   Loader2,
-  Send,
-  TrendingUp, Users, Wallet,
+  TrendingUp, Users, Wallet
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import {
@@ -169,12 +168,19 @@ export default function DashboardPage() {
             {activeRT?.display_name ?? "Konfigurasikan RT Anda di pengaturan"}
           </p>
         </div>
-        <a href="/tagihan"
-          className="hidden md:flex items-center gap-2 bg-yellow-400
-            hover:bg-yellow-300 text-blue-900 px-4 py-2 rounded-lg text-sm
-            font-bold transition-colors">
-          <Send className="w-3.5 h-3.5" /> Kelola Tagihan
-        </a>
+        <div className="hidden md:flex items-center gap-2">
+          <WATagihanReminderButton
+            rtGroupId={rtGroupId!}
+            year={new Date().getFullYear()}
+            month={new Date().getMonth() + 1}
+            unpaidCount={unpaidList.length}
+          />
+          <WABroadcastButton
+            rtGroupId={rtGroupId!}
+            wargaCount={aktifWarga}
+          />
+        </div>
+
       </div>
 
       {/* ── Stats ──────────────────────────────────────────────────────────── */}

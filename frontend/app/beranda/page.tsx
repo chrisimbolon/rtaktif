@@ -250,8 +250,8 @@ export default function BerandaPage() {
               icon:    "📋",
               label:   "Laporan Masalah",
               desc:    "Laporkan masalah di lingkungan RT",
-              href:    null,
-              soon:    true,
+              href:    rtGroupId ? "/beranda/laporan" : null,
+              soon:    !rtGroupId,
             },
             {
               icon:    "👤",

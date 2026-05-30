@@ -119,21 +119,51 @@ async def list_announcements(
 
 
 # ── Laporan ────────────────────────────────────────────────────────────────────
-
 @router.post("/komunikasi/laporan", status_code=201, tags=["Komunikasi"])
 async def submit_laporan(
     body:         SubmitLaporanRequest,
     current_user: dict = Depends(get_current_user),
     db:           AsyncSession = Depends(get_db),
 ):
+    """
+    Warga submits a laporan.
+    Resolves user_id → resident_id before saving.
+    """
+    from app.modules.warga.infrastructure.models import ResidentModel
+    from sqlalchemy import select as sa_select
+
+    user_id = UUID(current_user["user_id"])
+
+    # Lookup resident record for this user
+    result = await db.execute(
+        sa_select(ResidentModel.id)
+        .where(
+            ResidentModel.user_id    == user_id,
+            ResidentModel.rt_group_id == body.rt_group_id,
+        )
+    )
+    resident_row = result.scalar_one_or_none()
+
+    if not resident_row:
+        raise HTTPException(
+            status_code=403,
+            detail="Anda belum terdaftar sebagai warga di RT ini"
+        )
+
     laporan = await SubmitLaporan(PgLaporanRepository(db)).execute(
         rt_group_id = body.rt_group_id,
-        resident_id = UUID(current_user["user_id"]),
+        resident_id = resident_row,    # ← correct residents.id
         title       = body.title,
         description = body.description,
         photo_url   = body.photo_url,
     )
-    return {"id": str(laporan.id), "status": laporan.status}
+    return {
+        "id":          str(laporan.id),
+        "status":      laporan.status,
+        "title":       laporan.title,
+        "description": laporan.description,
+        "created_at":  laporan.created_at.isoformat() if laporan.created_at else None,
+    }
 
 
 @router.get("/komunikasi/laporan/{rt_group_id}", tags=["Komunikasi"])

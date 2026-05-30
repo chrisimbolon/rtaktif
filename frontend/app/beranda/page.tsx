@@ -1,6 +1,6 @@
 "use client";
 // app/beranda/page.tsx
-// Warga portal — shows real announcements + quick links
+// Warga portal — shows real announcements + quick links + laporan
 import { komunikasiApi } from "@/lib/api/komunikasi";
 import type { Announcement } from "@/types";
 import { useQuery } from "@tanstack/react-query";

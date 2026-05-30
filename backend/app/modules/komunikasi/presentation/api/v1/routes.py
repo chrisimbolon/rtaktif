@@ -1,7 +1,7 @@
 """
 Komunikasi routes — WA blast, announcements, laporan.
 
-WhatsApp Architecture: Option A (SaaS model)
+WhatsApp Architecture: (SaaS model)
   - RTMudah owns ONE Fonnte account
   - Single FONNTE_TOKEN in server .env
   - Ketua RT never needs to configure anything

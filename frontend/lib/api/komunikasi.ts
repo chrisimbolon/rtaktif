@@ -1,5 +1,5 @@
 // lib/api/komunikasi.ts
-// Updated — adds laporan.submit + laporan.myList
+// Recent Update — adds laporan.submit + laporan.myList
 import type { Announcement, Laporan } from "@/types";
 import apiClient from "./client";
 

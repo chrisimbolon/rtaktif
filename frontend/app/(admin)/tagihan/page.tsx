@@ -8,7 +8,7 @@
 //   PATCH /tagihan/{id}/confirm-payment  { method, bukti_url }
 //   POST /tagihan/mark-overdue/{id}
 // ─────────────────────────────────────────────────────────────────────────────
-
+import { WATagihanReminderButton } from "@/components/shared/WAReminder";
 import {
   confirmPayment,
   formatRupiah,
@@ -449,6 +449,14 @@ export default function TagihanPage() {
                 Tandai Terlambat
               </button>
             )}
+
+            <WATagihanReminderButton
+              rtGroupId={rtGroupId}
+              year={year}
+              month={month}
+              unpaidCount={stats.unpaid}
+            />
+
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white

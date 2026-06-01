@@ -29,7 +29,7 @@ async def require_admin(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     """Blocks non-admin roles. Use on admin-only endpoints."""
-    if current_user["role"] not in ("admin_rt", "admin_rw", "super_admin"):
+    if current_user["role"] not in ("admin_rt", "admin_rw", "super_admin", "ketua_rt", "superadmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

@@ -187,7 +187,7 @@ async def list_rt_groups(
     return [
         {
             "id":           str(rt.id),
-            "display_name": rt.display_name,
+            "display_name": f"RT {rt.rt_number}/RW {rt.rw_number}, {rt.kelurahan}",
             "rt_number":    rt.rt_number,
             "rw_number":    rt.rw_number,
             "kelurahan":    rt.kelurahan,
@@ -214,7 +214,7 @@ async def create_rt_group(
             admin_user_id=UUID(current_user["user_id"]),
             monthly_fee_idr=body.monthly_fee_idr,
         )
-        return {"id": str(rt.id), "display_name": rt.display_name}
+        return {"id": str(rt.id), "display_name": f"RT {rt.rt_number}/RW {rt.rw_number}, {rt.kelurahan}"}
     except IntegrityError as e:
         raise HTTPException(status_code=409, detail=_integrity_message(e))
 

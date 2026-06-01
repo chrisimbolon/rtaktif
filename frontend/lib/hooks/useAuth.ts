@@ -10,7 +10,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin"];
+const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin", "ketua_rt", "superadmin"];
 
 export function useAuth() {
   const { data: session, status } = useSession();

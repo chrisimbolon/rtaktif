@@ -84,3 +84,11 @@ export function extractApiError(err: unknown): string {
   const axiosErr = err as AxiosError<{ detail: string }>;
   return axiosErr?.response?.data?.detail ?? "Terjadi kesalahan. Coba lagi.";
 }
+
+export async function listRTGroups() {
+  const res = await fetch(`${API_BASE}/rt-groups`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) return [];
+  return res.json();
+}

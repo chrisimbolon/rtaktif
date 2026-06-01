@@ -20,13 +20,13 @@ class RegisterUser:
         full_name: str,
         rt_group_id=None,
     ) -> User:
-        if await self.user_repo.exists_by_email(email):
+        if await self.user_repo.get_by_email(email) is not None:
             raise DuplicateEntityError(f"Email sudah terdaftar: {email}")
 
         if not is_valid_indonesian_phone(phone):
             raise ValidationError(f"Nomor telepon tidak valid: {phone}")
 
-        user = User.register(
+        user = User.create(
             email=email,
             phone=normalise_phone(phone),
             hashed_password=hash_password(password),

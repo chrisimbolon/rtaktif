@@ -9,7 +9,7 @@ import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin"];
+const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin", "ketua_rt", "superadmin"];
 
 const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
   "/dashboard":  { title: "Dashboard",      subtitle: "Ringkasan RT Anda hari ini"   },

@@ -92,6 +92,25 @@ export const authConfig: NextAuthConfig = {
         token.backendToken = u.backendToken;
         token.full_name    = u.full_name;
       }
+      console.log("[jwt] token.role before re-fetch:", token.role);
+      // Always re-fetch fresh role + status from backend
+      // This ensures role upgrades (warga → ketua_rt) are reflected immediately
+      if (token.backendToken) {
+        try {
+          const meRes = await fetch(`${API_URL}/users/me`, {
+            headers: { Authorization: `Bearer ${token.backendToken as string}` },
+          });
+          if (meRes.ok) {
+            const profile = await meRes.json() as {
+              id: string; role: string; status: string; rt_group_id: string | null;
+            };
+            console.log("[jwt] profile.role from /users/me:", profile.role);
+            token.role        = profile.role;
+            token.status      = profile.status;
+            token.rt_group_id = profile.rt_group_id;
+          }
+        } catch {}
+      }
       return token;
     },
 

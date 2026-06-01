@@ -35,3 +35,16 @@ async def require_admin(
             detail="Admin access required",
         )
     return current_user
+
+
+async def require_superadmin(
+    current_user: dict = Depends(get_current_user),
+):
+    """FastAPI dependency — blocks anyone who is not superadmin."""
+    role = current_user.get("role", "")
+    if role != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya superadmin yang dapat mengakses endpoint ini",
+        )
+    return current_user

@@ -18,6 +18,7 @@ from app.modules.iam.presentation.api.v1.routes import router as iam_router
 from app.modules.warga.presentation.api.v1.routes import router as warga_router
 from app.modules.tagihan.presentation.api.v1.routes import router as tagihan_router
 from app.modules.komunikasi.presentation.api.v1.routes import router as komunikasi_router
+from app.modules.iam.presentation.api.v1.onboarding_routes import router as onboarding_router
 
 # Event bus subscriptions (wire up cross-module event handlers here)
 from app.core.events import event_bus
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(warga_router,       prefix=prefix)
     app.include_router(tagihan_router,     prefix=prefix)
     app.include_router(komunikasi_router,  prefix=prefix)
+    app.include_router(onboarding_router,  prefix=prefix)
 
     @app.get("/health", tags=["Health"])
     async def health():

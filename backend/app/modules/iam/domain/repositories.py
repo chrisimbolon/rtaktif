@@ -1,23 +1,60 @@
-"""Abstract repository interfaces — domain layer only sees these, never SQLAlchemy."""
-from abc import abstractmethod
+"""IAM domain repository interfaces — pure abstractions, no SQLAlchemy.
+
+The domain layer defines WHAT it needs; infrastructure provides HOW.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.core.base_repository import BaseRepository
-from app.modules.iam.domain.entities import User, RTGroup
+from app.modules.iam.domain.entities import (RTGroup, RTIdentity,
+                                             RTVerificationStatus, User)
 
 
-class UserRepository(BaseRepository[User]):
+class UserRepository(ABC):
+
+    @abstractmethod
+    async def get_by_id(self, user_id: UUID) -> Optional[User]: ...
+
     @abstractmethod
     async def get_by_email(self, email: str) -> Optional[User]: ...
 
     @abstractmethod
-    async def exists_by_email(self, email: str) -> bool: ...
+    async def get_by_phone(self, phone: str) -> Optional[User]: ...
 
     @abstractmethod
-    async def get_by_rt_group(self, rt_group_id: UUID) -> list[User]: ...
+    async def save(self, user: User) -> User: ...
 
-
-class RTGroupRepository(BaseRepository[RTGroup]):
     @abstractmethod
-    async def get_by_admin(self, admin_user_id: UUID) -> Optional[RTGroup]: ...
+    async def list_by_rt_group(self, rt_group_id: UUID) -> list[User]: ...
+
+
+class RTGroupRepository(ABC):
+
+    @abstractmethod
+    async def get_by_id(self, rt_group_id: UUID) -> Optional[RTGroup]: ...
+
+    @abstractmethod
+    async def find_by_identity(self, identity: RTIdentity) -> Optional[RTGroup]:
+        """Return the RTGroup matching this exact 5-tuple, or None.
+
+        Used to enforce the uniqueness invariant before creating a new
+        group — the DB constraint is the last line of defence, but we
+        check here first to give a friendly domain error.
+        """
+        ...
+
+    @abstractmethod
+    async def list_pending_verification(self) -> list[RTGroup]:
+        """Return all groups awaiting superadmin approval — the review queue."""
+        ...
+
+    @abstractmethod
+    async def list_expiring_soon(self, within_days: int = 30) -> list[RTGroup]:
+        """Return active groups whose SK expires within N days."""
+        ...
+
+    @abstractmethod
+    async def save(self, rt_group: RTGroup) -> RTGroup: ...

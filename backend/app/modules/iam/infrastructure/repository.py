@@ -1,155 +1,218 @@
-"""PostgreSQL implementations of IAM repositories — updated for production schema."""
+"""IAM PostgreSQL repository implementations.
+
+Only this layer is allowed to import SQLAlchemy / ORM models.
+All public methods speak domain types (entities + value objects).
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
+from app.modules.iam.domain.entities import (RTGroup, RTIdentity,
+                                             RTVerificationStatus, User,
+                                             UserRole, UserStatus)
+from app.modules.iam.domain.repositories import (RTGroupRepository,
+                                                 UserRepository)
+from app.modules.iam.infrastructure.models import RTGroupModel, UserModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.iam.domain.entities import User, RTGroup, UserRole, UserStatus
-from app.modules.iam.domain.repositories import UserRepository, RTGroupRepository
-from app.modules.iam.infrastructure.models import UserModel, RTGroupModel
-
 
 class PgUserRepository(UserRepository):
-    def __init__(self, session: AsyncSession):
-        self.session = session
 
-    async def get_by_id(self, entity_id: UUID) -> Optional[User]:
-        row = await self.session.get(UserModel, entity_id)
-        return self._to_entity(row) if row else None
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_id(self, user_id: UUID) -> Optional[User]:
+        result = await self._session.get(UserModel, user_id)
+        return self._to_entity(result) if result else None
 
     async def get_by_email(self, email: str) -> Optional[User]:
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.email == email)
-        )
-        row = result.scalar_one_or_none()
+        stmt = select(UserModel).where(UserModel.email == email.lower().strip())
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
         return self._to_entity(row) if row else None
 
-    async def exists_by_email(self, email: str) -> bool:
-        return await self.get_by_email(email) is not None
+    async def get_by_phone(self, phone: str) -> Optional[User]:
+        stmt = select(UserModel).where(UserModel.phone == phone.strip())
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        return self._to_entity(row) if row else None
 
-    async def get_by_rt_group(self, rt_group_id: UUID) -> list[User]:
-        result = await self.session.execute(
-            select(UserModel).where(UserModel.rt_group_id == rt_group_id)
-        )
-        return [self._to_entity(r) for r in result.scalars().all()]
+    async def list_by_rt_group(self, rt_group_id: UUID) -> list[User]:
+        stmt = select(UserModel).where(UserModel.rt_group_id == rt_group_id)
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return [self._to_entity(r) for r in rows]
 
-    async def save(self, entity: User) -> User:
-        existing = await self.session.get(UserModel, entity.id)
+    async def save(self, user: User) -> User:
+        existing = await self._session.get(UserModel, user.id)
         if existing:
-            existing.email            = entity.email
-            existing.phone            = entity.phone
-            existing.hashed_password  = entity.hashed_password
-            existing.full_name        = entity.full_name
-            existing.role             = entity.role.value
-            existing.status           = entity.status.value
-            existing.rt_group_id      = entity.rt_group_id
+            existing.email           = user.email
+            existing.phone           = user.phone
+            existing.hashed_password = user.hashed_password
+            existing.full_name       = user.full_name
+            existing.role            = user.role.value
+            existing.status          = user.status.value
+            existing.rt_group_id     = user.rt_group_id
+            model = existing
         else:
-            self.session.add(UserModel(
-                id=entity.id,
-                email=entity.email,
-                phone=entity.phone,
-                hashed_password=entity.hashed_password,
-                full_name=entity.full_name,
-                role=entity.role.value,
-                status=entity.status.value,
-                rt_group_id=entity.rt_group_id,
-                created_at=entity.created_at,
-                updated_at=entity.updated_at,
-            ))
-        await self.session.flush()
-        return entity
+            model = UserModel(
+                id               = user.id,
+                email            = user.email,
+                phone            = user.phone,
+                hashed_password  = user.hashed_password,
+                full_name        = user.full_name,
+                role             = user.role.value,
+                status           = user.status.value,
+                rt_group_id      = user.rt_group_id,
+            )
+            self._session.add(model)
 
-    async def delete(self, entity_id: UUID) -> None:
-        row = await self.session.get(UserModel, entity_id)
-        if row:
-            await self.session.delete(row)
+        await self._session.flush()
+        await self._session.refresh(model)
+        return self._to_entity(model)
 
-    async def list_all(self) -> list[User]:
-        result = await self.session.execute(select(UserModel))
-        return [self._to_entity(r) for r in result.scalars().all()]
+    # ── Mapping ───────────────────────────────────────────────────────────
 
-    def _to_entity(self, row: UserModel) -> User:
+    @staticmethod
+    def _to_entity(m: UserModel) -> User:
         return User(
-            id=row.id,
-            email=row.email,
-            phone=row.phone,
-            hashed_password=row.hashed_password,
-            full_name=row.full_name,
-            role=UserRole(row.role),
-            status=UserStatus(row.status),
-            rt_group_id=row.rt_group_id,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            id               = m.id,
+            email            = m.email,
+            phone            = m.phone,
+            hashed_password  = m.hashed_password,
+            full_name        = m.full_name,
+            role             = UserRole(m.role),
+            status           = UserStatus(m.status),
+            rt_group_id      = m.rt_group_id,
+            created_at       = m.created_at,
+            updated_at       = m.updated_at,
         )
 
 
 class PgRTGroupRepository(RTGroupRepository):
-    def __init__(self, session: AsyncSession):
-        self.session = session
 
-    async def get_by_id(self, entity_id: UUID) -> Optional[RTGroup]:
-        row = await self.session.get(RTGroupModel, entity_id)
-        return self._to_entity(row) if row else None
-    
-    async def get_all(self) -> list[RTGroup]:
-        """Fetch all RT groups — used by register page dropdown."""
-        result = await self.session.execute(
-            select(RTGroupModel).order_by(RTGroupModel.kota, RTGroupModel.rt_number)
-        )
-        rows = result.scalars().all()
-        return [self._to_entity(row) for row in rows]
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-    async def get_by_admin(self, admin_user_id: UUID) -> Optional[RTGroup]:
-        result = await self.session.execute(
-            select(RTGroupModel).where(RTGroupModel.admin_user_id == admin_user_id)
+    async def get_by_id(self, rt_group_id: UUID) -> Optional[RTGroup]:
+        result = await self._session.get(RTGroupModel, rt_group_id)
+        return self._to_entity(result) if result else None
+
+    async def find_by_identity(self, identity: RTIdentity) -> Optional[RTGroup]:
+        stmt = select(RTGroupModel).where(
+            RTGroupModel.rt_number == identity.rt_number,
+            RTGroupModel.rw_number == identity.rw_number,
+            RTGroupModel.kelurahan == identity.kelurahan,
+            RTGroupModel.kecamatan == identity.kecamatan,
+            RTGroupModel.kota      == identity.kota,
         )
-        row = result.scalar_one_or_none()
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
         return self._to_entity(row) if row else None
 
-    async def save(self, entity: RTGroup) -> RTGroup:
-        existing = await self.session.get(RTGroupModel, entity.id)
+    async def list_pending_verification(self) -> list[RTGroup]:
+        stmt = (
+            select(RTGroupModel)
+            .where(
+                RTGroupModel.verification_status
+                == RTVerificationStatus.PENDING_VERIFICATION.value
+            )
+            .order_by(RTGroupModel.created_at.asc())  # oldest first → FIFO queue
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return [self._to_entity(r) for r in rows]
+
+    async def list_expiring_soon(self, within_days: int = 30) -> list[RTGroup]:
+        cutoff = date.today() + timedelta(days=within_days)
+        stmt = select(RTGroupModel).where(
+            RTGroupModel.verification_status == RTVerificationStatus.ACTIVE.value,
+            RTGroupModel.sk_valid_until != None,  # noqa: E711
+            RTGroupModel.sk_valid_until <= cutoff,
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return [self._to_entity(r) for r in rows]
+
+    async def save(self, rt_group: RTGroup) -> RTGroup:
+        existing = await self._session.get(RTGroupModel, rt_group.id)
         if existing:
-            existing.monthly_fee_idr = entity.monthly_fee_idr
-            existing.is_active       = True
+            existing.rt_number           = rt_group.rt_number
+            existing.rw_number           = rt_group.rw_number
+            existing.kelurahan           = rt_group.kelurahan
+            existing.kecamatan           = rt_group.kecamatan
+            existing.kota                = rt_group.kota
+            existing.provinsi            = rt_group.provinsi
+            existing.admin_user_id       = rt_group.admin_user_id
+            existing.monthly_fee_idr     = rt_group.monthly_fee_idr
+            existing.is_active           = rt_group.is_active
+            existing.verification_status = rt_group.verification_status.value
+            existing.sk_document_url     = rt_group.sk_document_url
+            existing.sk_valid_until      = rt_group.sk_valid_until
+            existing.verified_at         = rt_group.verified_at
+            existing.verified_by         = rt_group.verified_by
+            existing.rejection_reason    = rt_group.rejection_reason
+            model = existing
         else:
-            self.session.add(RTGroupModel(
-                id=entity.id,
-                rt_number=entity.rt_number,
-                rw_number=entity.rw_number,
-                kelurahan=entity.kelurahan,
-                kecamatan=entity.kecamatan,
-                kota=entity.kota,
-                provinsi=entity.provinsi,
-                admin_user_id=entity.admin_user_id,
-                monthly_fee_idr=entity.monthly_fee_idr,
-                is_active=True,
-                created_at=entity.created_at,
-                updated_at=entity.updated_at,
-            ))
-        await self.session.flush()
-        return entity
+            model = RTGroupModel(
+                id                  = rt_group.id,
+                rt_number           = rt_group.rt_number,
+                rw_number           = rt_group.rw_number,
+                kelurahan           = rt_group.kelurahan,
+                kecamatan           = rt_group.kecamatan,
+                kota                = rt_group.kota,
+                provinsi            = rt_group.provinsi,
+                admin_user_id       = rt_group.admin_user_id,
+                monthly_fee_idr     = rt_group.monthly_fee_idr,
+                is_active           = rt_group.is_active,
+                verification_status = rt_group.verification_status.value,
+                sk_document_url     = rt_group.sk_document_url,
+                sk_valid_until      = rt_group.sk_valid_until,
+                verified_at         = rt_group.verified_at,
+                verified_by         = rt_group.verified_by,
+                rejection_reason    = rt_group.rejection_reason,
+            )
+            self._session.add(model)
 
-    async def delete(self, entity_id: UUID) -> None:
-        row = await self.session.get(RTGroupModel, entity_id)
-        if row:
-            await self.session.delete(row)
+        await self._session.flush()
+        await self._session.refresh(model)
+        return self._to_entity(model)
 
-    async def list_all(self) -> list[RTGroup]:
-        result = await self.session.execute(select(RTGroupModel))
-        return [self._to_entity(r) for r in result.scalars().all()]
+    # ── Mapping ───────────────────────────────────────────────────────────
 
-    def _to_entity(self, row: RTGroupModel) -> RTGroup:
-        return RTGroup(
-            id=row.id,
-            rt_number=row.rt_number,
-            rw_number=row.rw_number,
-            kelurahan=row.kelurahan,
-            kecamatan=row.kecamatan,
-            kota=row.kota,
-            provinsi=row.provinsi,
-            admin_user_id=row.admin_user_id,
-            monthly_fee_idr=row.monthly_fee_idr,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+    @staticmethod
+    def _to_entity(m: RTGroupModel) -> RTGroup:
+        identity = RTIdentity(
+            rt_number = m.rt_number,
+            rw_number = m.rw_number,
+            kelurahan = m.kelurahan,
+            kecamatan = m.kecamatan,
+            kota      = m.kota,
         )
+        group = RTGroup(
+            id                  = m.id,
+            identity            = identity,
+            admin_user_id       = m.admin_user_id,
+            monthly_fee_idr     = m.monthly_fee_idr,
+            is_active           = m.is_active,
+            provinsi            = m.provinsi,
+            verification_status = RTVerificationStatus(m.verification_status),
+            sk_document_url     = m.sk_document_url,
+            sk_valid_until      = m.sk_valid_until,
+            verified_at         = m.verified_at,
+            verified_by         = m.verified_by,
+            rejection_reason    = m.rejection_reason,
+            created_at          = m.created_at,
+            updated_at          = m.updated_at,
+        )
+        return group
+
+    async def get_all(self) -> list[RTGroup]:
+        """Return all active RT groups — used by the warga registration dropdown."""
+        from sqlalchemy import select
+        stmt = (
+            select(RTGroupModel)
+            .where(RTGroupModel.is_active == True)
+            .order_by(RTGroupModel.kota, RTGroupModel.kelurahan,
+                      RTGroupModel.rw_number, RTGroupModel.rt_number)
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        return [self._to_entity(r) for r in rows]

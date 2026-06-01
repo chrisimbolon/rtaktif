@@ -1,14 +1,20 @@
 // components/layout/AdminSidebar.tsx
 "use client";
-import Link           from "next/link";
-import { usePathname } from "next/navigation";
-import { cn }          from "@/lib/utils";
-import { useAuth }     from "@/lib/hooks/useAuth";
-import { useRTStore }  from "@/store/rt.store";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { cn } from "@/lib/utils";
+import { useRTStore } from "@/store/rt.store";
 import {
-  LayoutDashboard, Users, CreditCard,
-  Megaphone, ClipboardList, Settings, LogOut,
+  ClipboardList,
+  CreditCard,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Settings,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const NAV = [
   { label: "Dashboard",  href: "/dashboard",  icon: LayoutDashboard },
@@ -19,10 +25,16 @@ const NAV = [
   { label: "Pengaturan", href: "/pengaturan",  icon: Settings        },
 ];
 
+const SUPERADMIN_NAV = [
+  { label: "Verifikasi RT", href: "/superadmin/verifikasi", icon: ShieldCheck },
+];
+
 export function AdminSidebar() {
-  const pathname         = usePathname();
+  const pathname                   = usePathname();
   const { fullName, role, logout } = useAuth();
-  const { activeRT }     = useRTStore();
+  const { activeRT }               = useRTStore();
+
+  const isSuperadmin = role === "superadmin";
 
   const initials = (fullName ?? "A")
     .split(" ").slice(0, 2)
@@ -31,8 +43,13 @@ export function AdminSidebar() {
 
   const roleLabel = (role ?? "").replace("_", " ");
 
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(href + "/");
+
   return (
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
+
+      {/* Logo */}
       <div className="px-5 py-6 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
@@ -47,27 +64,50 @@ export function AdminSidebar() {
         </div>
       </div>
 
+      {/* Main nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {NAV.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link key={href} href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
-                active
-                  ? "bg-gray-700 text-white font-medium"
-                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
-              )}>
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{label}</span>
-            </Link>
-          );
-        })}
+        {NAV.map(({ label, href, icon: Icon }) => (
+          <Link key={href} href={href}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
+              isActive(href)
+                ? "bg-gray-700 text-white font-medium"
+                : "text-gray-400 hover:bg-gray-800 hover:text-white"
+            )}>
+            <Icon className="w-4 h-4 flex-shrink-0" />
+            <span>{label}</span>
+          </Link>
+        ))}
+
+        {/* Superadmin section — only visible to superadmin */}
+        {isSuperadmin && (
+          <>
+            <div className="pt-3 pb-1 px-3">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                Superadmin
+              </p>
+            </div>
+            {SUPERADMIN_NAV.map(({ label, href, icon: Icon }) => (
+              <Link key={href} href={href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
+                  isActive(href)
+                    ? "bg-orange-500/20 text-orange-400 font-medium"
+                    : "text-gray-400 hover:bg-gray-800 hover:text-orange-300"
+                )}>
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span>{label}</span>
+              </Link>
+            ))}
+          </>
+        )}
       </nav>
 
+      {/* User footer */}
       <div className="px-3 pb-4 border-t border-gray-800 pt-3">
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center
+                          text-white text-xs font-bold flex-shrink-0">
             {initials}
           </div>
           <div className="flex-1 min-w-0">
@@ -75,8 +115,11 @@ export function AdminSidebar() {
             <p className="text-[10px] text-gray-400 capitalize">{roleLabel}</p>
           </div>
         </div>
-        <button onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm
+                     text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+        >
           <LogOut className="w-4 h-4" />
           <span>Keluar</span>
         </button>

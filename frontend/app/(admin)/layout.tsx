@@ -12,22 +12,26 @@ import { useEffect } from "react";
 const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin", "ketua_rt", "superadmin"];
 
 const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
-  "/dashboard":  { title: "Dashboard",      subtitle: "Ringkasan RT Anda hari ini"   },
-  "/warga":      { title: "Data Warga",      subtitle: "Kelola data penduduk RT"      },
-  "/tagihan":    { title: "Tagihan & Iuran", subtitle: "Kelola pembayaran bulanan"    },
-  "/pengumuman": { title: "Pengumuman",      subtitle: "Broadcast informasi ke warga" },
-  "/laporan":    { title: "Laporan Warga",   subtitle: "Keluhan & laporan dari warga" },
-  "/pengaturan": { title: "Pengaturan",      subtitle: "Konfigurasi RT Anda"          },
+  "/dashboard":               { title: "Dashboard",          subtitle: "Ringkasan RT Anda hari ini"              },
+  "/warga":                   { title: "Data Warga",          subtitle: "Kelola data penduduk RT"                 },
+  "/tagihan":                 { title: "Tagihan & Iuran",     subtitle: "Kelola pembayaran bulanan"               },
+  "/pengumuman":              { title: "Pengumuman",          subtitle: "Broadcast informasi ke warga"            },
+  "/laporan":                 { title: "Laporan Warga",       subtitle: "Keluhan & laporan dari warga"            },
+  "/pengaturan":              { title: "Pengaturan",          subtitle: "Konfigurasi RT Anda"                     },
+  "/superadmin/verifikasi":   { title: "Verifikasi Ketua RT", subtitle: "Tinjau & setujui pendaftaran Ketua RT"  },
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const router   = useRouter();
   const pathname = usePathname();
-  const meta     = PAGE_META[pathname] ?? { title: "RTMudah" };
+
+  // Match exact or prefix (e.g. /superadmin/verifikasi/123)
+  const meta = Object.entries(PAGE_META).find(([key]) =>
+    pathname === key || pathname.startsWith(key + "/")
+  )?.[1] ?? { title: "RTMudah" };
 
   // ── Auto-fetch + cache RT group in Zustand store ──────────────────
-  // This is what makes the sidebar show "RT 05/RW 02 — Padang Harapan"
   useRTGroup();
 
   useEffect(() => {
@@ -44,6 +48,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (uStatus === "suspended") { router.replace("/login?error=AccountSuspended"); return; }
     if (uStatus === "pending")   { router.replace("/login?error=AccountPending");   return; }
     if (!ADMIN_ROLES.includes(role)) { router.replace("/beranda"); return; }
+
+    // Extra guard — non-superadmin trying to access /superadmin/* routes
+    if (pathname.startsWith("/superadmin") && role !== "superadmin") {
+      router.replace("/dashboard");
+      return;
+    }
 
   }, [session, status, router, pathname]);
 

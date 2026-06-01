@@ -187,6 +187,9 @@ jobs:
             echo "=== Pulling latest code ==="
             git pull origin main
 
+            echo "=== Clearing Docker build cache ==="
+            docker builder prune -f
+
             echo "=== Building backend (no cache — always picks up latest code) ==="
             docker compose build --no-cache --pull api migrate
 

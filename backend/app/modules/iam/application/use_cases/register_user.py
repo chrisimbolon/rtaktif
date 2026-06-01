@@ -33,7 +33,7 @@ class RegisterUser:
             full_name=full_name,
         )
         if rt_group_id:
-            user.assign_to_rt(rt_group_id)
+            user.assign_rt_group(rt_group_id)
 
         saved = await self.user_repo.save(user)
         for event in saved.pull_events():

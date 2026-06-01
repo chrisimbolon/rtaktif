@@ -652,8 +652,8 @@ export default function RegisterPage() {
                   </option>
                 )}
               </select>
-              {errors.rt_group_id && (
-                <p className="text-red-400 text-xs mt-1">{errors.rt_group_id.message}</p>
+              {(errors as any).rt_group_id && (
+                <p className="text-red-400 text-xs mt-1">{(errors as any).rt_group_id?.message}</p>
               )}
             </div>
           )}

@@ -275,7 +275,7 @@ async def get_rt_group(
         "kota":            rt.kota,
         "provinsi":        rt.provinsi,
         "monthly_fee_idr": rt.monthly_fee_idr,
-        "display_name":    rt.display_name,
+        "display_name":    f"RT {rt.rt_number}/RW {rt.rw_number}, {rt.kelurahan}",
     }
 
 
@@ -320,6 +320,6 @@ async def update_rt_group(
         "kota":            rt.kota,
         "provinsi":        rt.provinsi,
         "monthly_fee_idr": rt.monthly_fee_idr,
-        "display_name":    rt.display_name,
+        "display_name":    f"RT {rt.rt_number}/RW {rt.rw_number}, {rt.kelurahan}",
     }
 

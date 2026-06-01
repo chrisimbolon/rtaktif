@@ -633,7 +633,7 @@ export default function RegisterPage() {
               <select
                 className={cn(
                   "w-full px-4 py-3 rounded-xl bg-gray-900 border text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all appearance-none",
-                  errors.rt_group_id ? "border-red-500 text-red-400" : "border-gray-800 text-white focus:border-orange-500"
+                  (errors as any).rt_group_id ? "border-red-500 text-red-400" : "border-gray-800 text-white focus:border-orange-500"
                 )}
                 {...register("rt_group_id")}
                 defaultValue=""

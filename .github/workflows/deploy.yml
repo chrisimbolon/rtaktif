@@ -188,7 +188,7 @@ jobs:
             git pull origin main
 
             echo "=== Building backend (no cache — always picks up latest code) ==="
-            docker compose build --no-cache api migrate
+            docker compose build --no-cache --pull api migrate
 
             echo "=== Starting DB + Redis ==="
             docker compose up -d db redis

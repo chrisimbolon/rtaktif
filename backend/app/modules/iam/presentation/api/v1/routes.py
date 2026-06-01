@@ -230,7 +230,7 @@ async def get_rt_members(
     List members of an RT group.
     Optional filters: ?status=pending, ?status=active, ?role=warga
     """
-    users = await PgUserRepository(db).get_by_rt_group(rt_group_id)
+    users = await PgUserRepository(db).list_by_rt_group(rt_group_id)
 
     # Apply optional filters
     if status:

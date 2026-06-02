@@ -12,17 +12,32 @@ export type InvoiceStatus = "issued" | "paid" | "overdue" | "cancelled";
 export type PaymentMethod = "cash" | "bank_transfer" | "qris" | "other";
 
 export interface Invoice {
-  id:          string;
-  resident_id: string;
-  period:      string;   // backend returns period_label string in response
-  amount_idr:  number;
-  status:      InvoiceStatus;
-  // enriched client-side from warga list
+  id:           string;
+  resident_id:  string;
+  period:       string;
+  amount_idr:   number;
+  status:       InvoiceStatus;
   resident_name?: string;
+  bukti_url:    string | null;
 }
 
 export interface GenerateBulkResult {
   invoices_created: number;
+}
+
+export interface InvoiceDetail {
+  id:         string;
+  status:     string;
+  amount_idr: number;
+  period:     string;
+  bukti_url:  string | null;
+  paid_at:    string | null;
+}
+
+export interface UploadBuktiResult {
+  invoice_id: string;
+  bukti_url:  string;
+  message:    string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -101,6 +116,37 @@ export async function confirmPayment(
   const { data } = await apiClient.patch(
     `/tagihan/${invoiceId}/confirm-payment`,
     { method, bukti_url: buktiUrl ?? null }
+  );
+  return data;
+}
+
+export async function getInvoiceDetail(
+  invoiceId: string
+): Promise<InvoiceDetail> {
+  const { data } = await apiClient.get<InvoiceDetail>(
+    `/tagihan/${invoiceId}/detail`
+  );
+  return data;
+}
+
+export async function uploadBuktiBayar(
+  invoiceId: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<UploadBuktiResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await apiClient.post<UploadBuktiResult>(
+    `/tagihan/${invoiceId}/upload-bukti`,
+    form,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      },
+    }
   );
   return data;
 }

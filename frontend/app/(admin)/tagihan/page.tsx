@@ -21,6 +21,7 @@ import {
   periodLabel,
   uploadBuktiBayar,
   type Invoice,
+  type PaymentMethod,
 } from "@/lib/api/tagihan";
 import { useRTStore } from "@/store/rt.store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,7 +45,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "overdue", label: "Terlambat"   },
 ];
 
-const PAYMENT_METHODS: { value: string; label: string }[] = [
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash",          label: "Tunai"         },
   { value: "bank_transfer", label: "Transfer Bank"  },
   { value: "e_wallet",      label: "E-Wallet"       },
@@ -152,7 +153,7 @@ interface ConfirmModalProps {
 }
 
 function ConfirmModal({ invoice, residentName, onClose, onSuccess }: ConfirmModalProps) {
-  const [method, setMethod]   = useState<string>("cash");
+  const [method, setMethod]   = useState<PaymentMethod>("cash");
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [uploadPct, setUploadPct]       = useState(0);
@@ -331,7 +332,7 @@ function ConfirmModal({ invoice, residentName, onClose, onSuccess }: ConfirmModa
                 <button
                   key={m.value}
                   type="button"
-                  onClick={() => setMethod(m.value)}
+                  onClick={() => setMethod(m.value as PaymentMethod)}
                   className={`px-3 py-2.5 rounded-lg text-xs font-semibold
                     border transition-all ${
                       method === m.value

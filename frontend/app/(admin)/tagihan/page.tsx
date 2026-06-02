@@ -152,7 +152,7 @@ interface ConfirmModalProps {
 }
 
 function ConfirmModal({ invoice, residentName, onClose, onSuccess }: ConfirmModalProps) {
-  const [method, setMethod]   = useState<PaymentMethod>("cash");
+  const [method, setMethod]   = useState<string>("cash");
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [uploadPct, setUploadPct]       = useState(0);

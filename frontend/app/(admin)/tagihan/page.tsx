@@ -45,7 +45,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "overdue", label: "Terlambat"   },
 ];
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+const PAYMENT_METHODS: { value: string; label: string }[] = [
   { value: "cash",          label: "Tunai"         },
   { value: "bank_transfer", label: "Transfer Bank"  },
   { value: "e_wallet",      label: "E-Wallet"       },

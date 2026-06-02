@@ -9,7 +9,7 @@ import apiClient from "./client";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type InvoiceStatus = "issued" | "paid" | "overdue" | "cancelled";
-export type PaymentMethod = "cash" | "bank_transfer" | "qris" | "other";
+export type PaymentMethod = "cash" | "bank_transfer" | "e_wallet" | "qris" | "other";
 
 export interface Invoice {
   id:           string;

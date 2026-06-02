@@ -58,6 +58,25 @@ class PgInvoiceRepository(InvoiceRepository):
         )
         return [self._to_entity(r) for r in result.scalars().all()]
 
+    async def get_bukti_url(self, invoice_id: UUID) -> Optional[str]:
+        """Returns pending_bukti_url stored when warga uploaded proof."""
+        from sqlalchemy import select
+        result = await self.session.execute(
+            select(InvoiceModel.pending_bukti_url)
+            .where(InvoiceModel.id == invoice_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def set_pending_bukti(self, invoice_id: UUID, bukti_url: str) -> None:
+        """Stores warga-uploaded bukti URL. Does NOT change invoice status."""
+        from sqlalchemy import update
+        await self.session.execute(
+            update(InvoiceModel)
+            .where(InvoiceModel.id == invoice_id)
+            .values(pending_bukti_url=bukti_url)
+        )
+        await self.session.commit()
+
     async def save(self, entity: Invoice) -> Invoice:
         existing = await self.session.get(InvoiceModel, entity.id)
         if existing:

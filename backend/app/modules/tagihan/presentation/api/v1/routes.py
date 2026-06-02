@@ -1,8 +1,16 @@
-#  backend/app/modules/tagihan/presentation/api/v1/routes.py 
+#  backend/app/modules/tagihan/presentation/api/v1/routes.py
+#
+#  New endpoints added for Method B (bukti bayar flow):
+#    POST /tagihan/{invoice_id}/upload-bukti   ← warga uploads proof
+#    GET  /tagihan/{invoice_id}/detail         ← treasurer sees invoice + bukti
+#    PATCH /tagihan/{invoice_id}/confirm-payment  ← unchanged, bukti_url already supported
+#
+import os
+import uuid as _uuid
 from uuid import UUID
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import EntityNotFoundError
 from app.modules.iam.infrastructure.models import UserModel
 from app.modules.tagihan.application.schemas import (ConfirmPaymentRequest,
@@ -14,16 +22,37 @@ from app.modules.tagihan.application.use_cases.generate_bulk_invoices import \
 from app.modules.tagihan.application.use_cases.mark_overdue import \
     MarkOverdueInvoices
 from app.modules.tagihan.infrastructure.repository import PgInvoiceRepository
-from app.modules.warga.infrastructure.models import ResidentModel  # ← ADD
+from app.modules.warga.infrastructure.models import ResidentModel
 from app.modules.warga.infrastructure.repository import PgResidentRepository
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 MONTHS_ID = ["","Januari","Februari","Maret","April","Mei","Juni",
              "Juli","Agustus","September","Oktober","November","Desember"]
 
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/tmp/rtmudah_uploads")
+
 router = APIRouter()
+
+
+def _ensure_upload_dir() -> None:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+async def _save_file(file: UploadFile, prefix: str) -> str:
+    """
+    Save uploaded file to UPLOAD_DIR and return its public URL path.
+    Later: swap body to upload to DO Spaces, return CDN URL.
+    """
+    _ensure_upload_dir()
+    ext      = os.path.splitext(file.filename or "file.jpg")[1] or ".jpg"
+    filename = f"{prefix}_{_uuid.uuid4().hex}{ext}"
+    dest     = os.path.join(UPLOAD_DIR, filename)
+    content  = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+    return f"/uploads/{filename}"
 
 
 @router.post("/tagihan/generate-bulk", status_code=201, tags=["Tagihan"])
@@ -32,7 +61,6 @@ async def generate_bulk(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    from uuid import UUID
     invoices = await GenerateBulkInvoices(
         PgInvoiceRepository(db), PgResidentRepository(db)
     ).execute(
@@ -40,6 +68,7 @@ async def generate_bulk(
         amount_idr=body.amount_idr, generated_by=UUID(current_user["user_id"]),
     )
     return {"invoices_created": len(invoices)}
+
 
 @router.get("/tagihan/rt/{rt_group_id}", tags=["Tagihan"])
 async def get_invoices_by_period(
@@ -49,63 +78,18 @@ async def get_invoices_by_period(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """List invoices for a period — enriched with resident full_name."""
     invoices = await PgInvoiceRepository(db).get_by_rt_and_period(
         rt_group_id, year, month
     )
     if not invoices:
         return []
 
-    # Batch-fetch resident → user name mapping
     resident_ids = [inv.resident_id for inv in invoices]
     result = await db.execute(
         select(ResidentModel.id, ResidentModel.user_id)
         .where(ResidentModel.id.in_(resident_ids))
     )
     resident_user_map = {row.id: row.user_id for row in result.all()}
-
-    user_ids = list(resident_user_map.values())
-
-    user_result = await db.execute(
-        select(UserModel.id, UserModel.full_name)
-        .where(UserModel.id.in_(user_ids))
-    )
-    user_name_map = {row.id: row.full_name for row in user_result.all()}
-
-    # Build enriched response
-    return [
-        {
-            "id":            str(inv.id),
-            "resident_id":   str(inv.resident_id),
-            "resident_name": user_name_map.get(
-                resident_user_map.get(inv.resident_id), ""
-            ) or "",
-            "period": f"{MONTHS_ID[inv.period_month]} {inv.period_year}",
-            "amount_idr":    inv.amount_idr,
-            "status":        inv.status,
-        }
-        for inv in invoices
-    ]
-
-@router.get("/tagihan/unpaid/{rt_group_id}", tags=["Tagihan"])
-async def get_unpaid(
-    rt_group_id: UUID,
-    current_user: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """List unpaid invoices — enriched with resident full_name."""
-    invoices = await PgInvoiceRepository(db).get_unpaid_by_rt(rt_group_id)
-    if not invoices:
-        return []
-
-    # Batch-fetch resident → user name mapping (same pattern as get_invoices_by_period)
-    resident_ids = [inv.resident_id for inv in invoices]
-    result = await db.execute(
-        select(ResidentModel.id, ResidentModel.user_id)
-        .where(ResidentModel.id.in_(resident_ids))
-    )
-    resident_user_map = {row.id: row.user_id for row in result.all()}
-
     user_ids = list(resident_user_map.values())
     user_result = await db.execute(
         select(UserModel.id, UserModel.full_name)
@@ -123,20 +107,167 @@ async def get_unpaid(
             "period":        f"{MONTHS_ID[inv.period_month]} {inv.period_year}",
             "amount_idr":    inv.amount_idr,
             "status":        inv.status,
+            "bukti_url":     inv.payment.bukti_url if inv.payment else None,
         }
         for inv in invoices
     ]
 
-@router.patch("/tagihan/{invoice_id}/confirm-payment", tags=["Tagihan"])
-async def confirm_payment(
-    invoice_id: UUID, body: ConfirmPaymentRequest,
+
+@router.get("/tagihan/unpaid/{rt_group_id}", tags=["Tagihan"])
+async def get_unpaid(
+    rt_group_id: UUID,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    invoices = await PgInvoiceRepository(db).get_unpaid_by_rt(rt_group_id)
+    if not invoices:
+        return []
+
+    resident_ids = [inv.resident_id for inv in invoices]
+    result = await db.execute(
+        select(ResidentModel.id, ResidentModel.user_id)
+        .where(ResidentModel.id.in_(resident_ids))
+    )
+    resident_user_map = {row.id: row.user_id for row in result.all()}
+    user_ids = list(resident_user_map.values())
+    user_result = await db.execute(
+        select(UserModel.id, UserModel.full_name)
+        .where(UserModel.id.in_(user_ids))
+    )
+    user_name_map = {row.id: row.full_name for row in user_result.all()}
+
+    return [
+        {
+            "id":            str(inv.id),
+            "resident_id":   str(inv.resident_id),
+            "resident_name": user_name_map.get(
+                resident_user_map.get(inv.resident_id), ""
+            ) or "",
+            "period":        f"{MONTHS_ID[inv.period_month]} {inv.period_year}",
+            "amount_idr":    inv.amount_idr,
+            "status":        inv.status,
+            "bukti_url":     None,
+        }
+        for inv in invoices
+    ]
+
+
+@router.get("/tagihan/{invoice_id}/detail", tags=["Tagihan"])
+async def get_invoice_detail(
+    invoice_id: UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns single invoice with bukti_url populated.
+    Used by treasurer review modal to show payment proof image.
+    """
+    repo    = PgInvoiceRepository(db)
+    invoice = await repo.get_by_id(invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Tagihan tidak ditemukan")
+
+    bukti_url = None
+    if invoice.payment:
+        bukti_url = invoice.payment.bukti_url
+
+    if not bukti_url:
+        bukti_url = await repo.get_bukti_url(invoice_id)
+
+    return {
+        "id":         str(invoice.id),
+        "status":     invoice.status,
+        "amount_idr": invoice.amount_idr,
+        "period":     invoice.period_label,
+        "bukti_url":  bukti_url,
+        "paid_at":    invoice.paid_at.isoformat() if invoice.paid_at else None,
+    }
+
+
+@router.post("/tagihan/{invoice_id}/upload-bukti", tags=["Tagihan"])
+async def upload_bukti_bayar(
+    invoice_id: UUID,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Warga uploads bukti bayar (receipt image/PDF).
+    Stores URL in pending_bukti_url on the invoice row.
+    Treasurer will see this URL in the review modal before confirming.
+
+    Allowed types: image/jpeg, image/png, image/webp, application/pdf
+    Max size: 5 MB
+    """
+    ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+    MAX_SIZE_BYTES = 5 * 1024 * 1024
+
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tipe file tidak didukung: {file.content_type}. "
+                   "Gunakan JPG, PNG, WebP, atau PDF."
+        )
+
+    content = await file.read()
+    if len(content) > MAX_SIZE_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail="Ukuran file maksimal 5 MB"
+        )
+
+    await file.seek(0)
+
+    repo    = PgInvoiceRepository(db)
+    invoice = await repo.get_by_id(invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Tagihan tidak ditemukan")
+
+    if invoice.status == "paid":
+        raise HTTPException(status_code=409, detail="Tagihan sudah lunas")
+
+    ext      = os.path.splitext(file.filename or "bukti.jpg")[1] or ".jpg"
+    filename = f"bukti_{invoice_id.hex}_{_uuid.uuid4().hex[:8]}{ext}"
+    dest     = os.path.join(UPLOAD_DIR, filename)
+    _ensure_upload_dir()
+
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    bukti_url = f"/uploads/{filename}"
+    await repo.set_pending_bukti(invoice_id, bukti_url)
+
+    return {
+        "invoice_id": str(invoice_id),
+        "bukti_url":  bukti_url,
+        "message":    "Bukti bayar berhasil diunggah. Menunggu konfirmasi Ketua RT.",
+    }
+
+
+@router.patch("/tagihan/{invoice_id}/confirm-payment", tags=["Tagihan"])
+async def confirm_payment(
+    invoice_id: UUID,
+    body: ConfirmPaymentRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Treasurer confirms payment.
+    bukti_url: if not provided in body, uses the pending_bukti_url
+    already stored on the invoice (uploaded by warga).
+    """
+    repo = PgInvoiceRepository(db)
+
+    bukti_url = body.bukti_url
+    if not bukti_url:
+        bukti_url = await repo.get_bukti_url(invoice_id)
+
     try:
-        invoice = await ConfirmPayment(PgInvoiceRepository(db)).execute(
-            invoice_id=invoice_id, method=body.method,
-            confirmed_by=UUID(current_user["user_id"]), bukti_url=body.bukti_url,
+        invoice = await ConfirmPayment(repo).execute(
+            invoice_id=invoice_id,
+            method=body.method,
+            confirmed_by=UUID(current_user["user_id"]),
+            bukti_url=bukti_url,
         )
         return {"id": str(invoice.id), "status": invoice.status}
     except EntityNotFoundError as e:

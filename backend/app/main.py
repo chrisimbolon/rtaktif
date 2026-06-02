@@ -1,30 +1,30 @@
 """
-RukunRT — FastAPI entry point.
+rtmudah.com — FastAPI entry point.
 Thin orchestration only: register routers, middleware, lifespan.
 Zero business logic here.
 """
-from contextlib import asynccontextmanager
 import logging
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import engine
-from app.core.logging import setup_logging
-from app.core.middleware import log_requests
-
-# Module routers
-from app.modules.iam.presentation.api.v1.routes import router as iam_router
-from app.modules.warga.presentation.api.v1.routes import router as warga_router
-from app.modules.tagihan.presentation.api.v1.routes import router as tagihan_router
-from app.modules.komunikasi.presentation.api.v1.routes import router as komunikasi_router
-from app.modules.iam.presentation.api.v1.onboarding_routes import router as onboarding_router
-
 # Event bus subscriptions (wire up cross-module event handlers here)
 from app.core.events import event_bus
-from app.modules.tagihan.domain.events import InvoiceGenerated
+from app.core.logging import setup_logging
+from app.core.middleware import log_requests
+from app.modules.iam.presentation.api.v1.onboarding_routes import \
+    router as onboarding_router
+# Module routers
+from app.modules.iam.presentation.api.v1.routes import router as iam_router
 from app.modules.komunikasi.domain.events import AnnouncementPublished
-
+from app.modules.komunikasi.presentation.api.v1.routes import \
+    router as komunikasi_router
+from app.modules.tagihan.domain.events import InvoiceGenerated
+from app.modules.tagihan.presentation.api.v1.routes import \
+    router as tagihan_router
+from app.modules.warga.presentation.api.v1.routes import router as warga_router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger("rukunrt")
 
@@ -53,6 +53,15 @@ async def lifespan(app: FastAPI):
     event_bus.subscribe(InvoiceGenerated, _on_invoice_generated)
     event_bus.subscribe(AnnouncementPublished, _on_announcement_published)
 
+    # ── ADD: WA notification after payment confirmed ──────────────────
+    from app.modules.tagihan.application.use_cases.notify_payment_confirmed import \
+        NotifyPaymentConfirmed
+    from app.modules.tagihan.domain.events import PaymentConfirmed
+    notifier = NotifyPaymentConfirmed()
+    event_bus.subscribe(PaymentConfirmed, notifier.handle)
+    logger.info("WA payment confirmed handler registered")
+    # ─────────────────────────────────────────────────────────────────
+
     yield
 
     # Shutdown
@@ -79,6 +88,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.middleware("http")(log_requests)
+
+    # ── ADD: serve uploaded bukti bayar files ─────────────────────────
+    import os
+
+    from fastapi.staticfiles import StaticFiles
+    UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/tmp/rtmudah_uploads")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+    # ─────────────────────────────────────────────────────────────────
 
     # Register all module routers under /api/v1
     prefix = settings.API_V1_PREFIX

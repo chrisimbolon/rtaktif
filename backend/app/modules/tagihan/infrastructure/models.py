@@ -46,6 +46,7 @@ class InvoiceModel(Base):
     # Denormalised for fast reads (don't need JOIN to payments for basic status checks)
     paid_at:      Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     notes:        Mapped[str]  = mapped_column(Text, server_default="", nullable=False)
+    pending_bukti_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at:   Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now(), nullable=False)
     updated_at:   Mapped[datetime] = mapped_column(TZDateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

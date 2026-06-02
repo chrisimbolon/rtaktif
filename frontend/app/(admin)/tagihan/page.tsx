@@ -21,7 +21,7 @@ import {
   periodLabel,
   uploadBuktiBayar,
   type Invoice,
-  type PaymentMethodType,
+  
 } from "@/lib/api/tagihan";
 import { useRTStore } from "@/store/rt.store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -45,7 +45,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "overdue", label: "Terlambat"   },
 ];
 
-const PAYMENT_METHODS: { value: PaymentMethodType; label: string }[] = [
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash",          label: "Tunai"         },
   { value: "bank_transfer", label: "Transfer Bank"  },
   { value: "e_wallet",      label: "E-Wallet"       },
@@ -153,7 +153,7 @@ interface ConfirmModalProps {
 }
 
 function ConfirmModal({ invoice, residentName, onClose, onSuccess }: ConfirmModalProps) {
-  const [method, setMethod]   = useState<PaymentMethodType>("cash");
+  const [method, setMethod]   = useState<PaymentMethod>("cash");
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [uploadPct, setUploadPct]       = useState(0);

@@ -75,7 +75,7 @@ async def get_invoices_by_period(
     rt_group_id: UUID,
     year:  int,
     month: int,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     invoices = await PgInvoiceRepository(db).get_by_rt_and_period(

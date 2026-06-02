@@ -236,8 +236,8 @@ export default function BerandaPage() {
               icon:    "💳",
               label:   "Tagihan Iuran",
               desc:    "Lihat status tagihan bulanan",
-              href:    null,
-              soon:    true,
+              href:    rtGroupId ? "/beranda/tagihan" : null,
+              soon:    !rtGroupId,
             },
             {
               icon:    "📢",

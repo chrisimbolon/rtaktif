@@ -40,6 +40,11 @@ export const komunikasiApi = {
     },
 
     // Admin: resolve a laporan with notes
+    myList: async (): Promise<Laporan[]> => {
+      const res = await apiClient.get("/komunikasi/laporan/mine");
+      return res.data;
+    },
+
     resolve: async (laporanId: string, notes: string): Promise<Laporan> => {
       const res = await apiClient.patch(
         `/komunikasi/laporan/${laporanId}/resolve`, { notes }

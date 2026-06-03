@@ -1,12 +1,15 @@
 """PostgreSQL implementation of ResidentRepository — updated for new schema."""
 from typing import Optional
 from uuid import UUID
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.warga.domain.entities import Resident, ResidentStatus, OwnershipType
+from app.modules.warga.domain.entities import (
+    Agama, JenisKelamin, OwnershipType, Pekerjaan,
+    Resident, ResidentStatus, StatusKawin, StatusKeluarga, StatusTinggal,
+)
 from app.modules.warga.domain.repositories import ResidentRepository
 from app.modules.warga.infrastructure.models import ResidentModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class PgResidentRepository(ResidentRepository):
@@ -18,6 +21,7 @@ class PgResidentRepository(ResidentRepository):
         return self._to_entity(row) if row else None
 
     async def get_by_user_id(self, user_id: UUID) -> Optional[Resident]:
+        """Fetch the resident record for a given user_id."""
         result = await self.session.execute(
             select(ResidentModel).where(ResidentModel.user_id == user_id)
         )
@@ -27,7 +31,6 @@ class PgResidentRepository(ResidentRepository):
     async def get_by_rt_group(
         self, rt_group_id: UUID, status: Optional[ResidentStatus] = None
     ) -> list[Resident]:
-        # Uses composite index: ix_residents_rt_status
         q = select(ResidentModel).where(ResidentModel.rt_group_id == rt_group_id)
         if status:
             q = q.where(ResidentModel.status == status.value)
@@ -42,36 +45,50 @@ class PgResidentRepository(ResidentRepository):
     async def save(self, entity: Resident) -> Resident:
         existing = await self.session.get(ResidentModel, entity.id)
         if existing:
-            existing.status       = entity.status.value
-            existing.kk_file_url  = entity.kk_file_url
-            existing.ktp_file_url = entity.ktp_file_url
-            existing.member_count = entity.member_count
-            existing.phone        = entity.phone
-            existing.verified_at  = entity.verified_at
-            existing.verified_by  = entity.verified_by
+            existing.status          = entity.status.value
+            existing.full_name       = entity.full_name
+            existing.phone           = entity.phone
+            existing.kk_file_url     = entity.kk_file_url
+            existing.ktp_file_url    = entity.ktp_file_url
+            existing.member_count    = entity.member_count
+            existing.verified_at     = entity.verified_at
+            existing.verified_by     = entity.verified_by
+            # Rich profile fields
+            existing.nik             = entity.nik
+            existing.no_kk           = entity.no_kk
+            existing.tanggal_lahir   = entity.tanggal_lahir
+            existing.tempat_lahir    = entity.tempat_lahir
+            existing.jenis_kelamin   = entity.jenis_kelamin.value   if entity.jenis_kelamin   else None
+            existing.agama           = entity.agama.value            if entity.agama           else None
+            existing.pekerjaan       = entity.pekerjaan.value        if entity.pekerjaan       else None
+            existing.status_kawin    = entity.status_kawin.value     if entity.status_kawin    else None
+            existing.status_tinggal  = entity.status_tinggal.value   if entity.status_tinggal  else "TETAP"
+            existing.status_keluarga = entity.status_keluarga.value  if entity.status_keluarga else None
+            existing.kepala_keluarga = entity.kepala_keluarga
+            existing.alamat_ktp      = entity.alamat_ktp
         else:
             self.session.add(ResidentModel(
-                id=entity.id,
-                rt_group_id=entity.rt_group_id,
-                user_id=entity.user_id,
-                full_name=entity.full_name,
-                phone=entity.phone,
-                nik=entity.nik,
-                street=entity.street,
-                rt_number=entity.rt_number,
-                rw_number=entity.rw_number,
-                kelurahan=entity.kelurahan,
-                kecamatan=entity.kecamatan,
-                kota=entity.kota,
-                block=entity.block,
-                unit_number=entity.unit_number,
-                ownership_type=entity.ownership_type.value,
-                status=entity.status.value,
-                member_count=entity.member_count,
-                verified_at=entity.verified_at,
-                verified_by=entity.verified_by,
-                created_at=entity.created_at,
-                updated_at=entity.updated_at,
+                id             = entity.id,
+                rt_group_id    = entity.rt_group_id,
+                user_id        = entity.user_id,
+                full_name      = entity.full_name,
+                phone          = entity.phone,
+                nik            = entity.nik,
+                street         = entity.street,
+                rt_number      = entity.rt_number,
+                rw_number      = entity.rw_number,
+                kelurahan      = entity.kelurahan,
+                kecamatan      = entity.kecamatan,
+                kota           = entity.kota,
+                block          = entity.block,
+                unit_number    = entity.unit_number,
+                ownership_type = entity.ownership_type.value,
+                status         = entity.status.value,
+                member_count   = entity.member_count,
+                verified_at    = entity.verified_at,
+                verified_by    = entity.verified_by,
+                created_at     = entity.created_at,
+                updated_at     = entity.updated_at,
             ))
         await self.session.flush()
         return entity
@@ -87,27 +104,39 @@ class PgResidentRepository(ResidentRepository):
 
     def _to_entity(self, row: ResidentModel) -> Resident:
         return Resident(
-            id=row.id,
-            rt_group_id=row.rt_group_id,
-            user_id=row.user_id,
-            full_name=row.full_name,
-            phone=row.phone,
-            nik=row.nik,
-            street=row.street,
-            rt_number=row.rt_number,
-            rw_number=row.rw_number,
-            kelurahan=row.kelurahan,
-            kecamatan=row.kecamatan,
-            kota=row.kota,
-            block=row.block,
-            unit_number=row.unit_number,
-            ownership_type=OwnershipType(row.ownership_type),
-            status=ResidentStatus(row.status),
-            member_count=row.member_count,
-            kk_file_url=row.kk_file_url,
-            ktp_file_url=row.ktp_file_url,
-            verified_at=row.verified_at,
-            verified_by=row.verified_by,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            id             = row.id,
+            rt_group_id    = row.rt_group_id,
+            user_id        = row.user_id,
+            full_name      = row.full_name,
+            phone          = row.phone,
+            nik            = row.nik,
+            street         = row.street,
+            rt_number      = row.rt_number,
+            rw_number      = row.rw_number,
+            kelurahan      = row.kelurahan,
+            kecamatan      = row.kecamatan,
+            kota           = row.kota,
+            block          = row.block,
+            unit_number    = row.unit_number,
+            ownership_type = OwnershipType(row.ownership_type),
+            status         = ResidentStatus(row.status),
+            member_count   = row.member_count,
+            kk_file_url    = row.kk_file_url,
+            ktp_file_url   = row.ktp_file_url,
+            verified_at    = row.verified_at,
+            verified_by    = row.verified_by,
+            created_at     = row.created_at,
+            updated_at     = row.updated_at,
+            # Rich profile fields
+            no_kk           = row.no_kk,
+            tanggal_lahir   = row.tanggal_lahir,
+            tempat_lahir    = row.tempat_lahir,
+            jenis_kelamin   = JenisKelamin(row.jenis_kelamin)    if row.jenis_kelamin   else None,
+            agama           = Agama(row.agama)                    if row.agama           else None,
+            pekerjaan       = Pekerjaan(row.pekerjaan)            if row.pekerjaan       else None,
+            status_kawin    = StatusKawin(row.status_kawin)       if row.status_kawin    else None,
+            status_tinggal  = StatusTinggal(row.status_tinggal)   if row.status_tinggal  else StatusTinggal.TETAP,
+            status_keluarga = StatusKeluarga(row.status_keluarga) if row.status_keluarga else None,
+            kepala_keluarga = row.kepala_keluarga or False,
+            alamat_ktp      = row.alamat_ktp,
         )

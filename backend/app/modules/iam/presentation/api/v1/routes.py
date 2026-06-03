@@ -3,6 +3,8 @@ IAM routes — all endpoints for auth, users, and RT groups.
 IntegrityError caught at every write endpoint to prevent 500s
 from DB-level unique constraint violations.
 """
+import re as _re
+from datetime import date as _date
 from typing import Optional
 from uuid import UUID
 
@@ -22,11 +24,70 @@ from app.modules.iam.infrastructure.repository import (PgRTGroupRepository,
                                                        PgUserRepository)
 from app.modules.warga.infrastructure.repository import PgResidentRepository
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
+
+class UpdateProfileRequest(BaseModel):
+    # Core — users table
+    full_name: str
+    phone:     str
+
+    # Rich profile — residents table (all optional)
+    nik:             Optional[str] = None
+    no_kk:           Optional[str] = None
+    tanggal_lahir:   Optional[str] = None   # ISO date string "YYYY-MM-DD"
+    tempat_lahir:    Optional[str] = None
+    jenis_kelamin:   Optional[str] = None
+    agama:           Optional[str] = None
+    pekerjaan:       Optional[str] = None
+    status_kawin:    Optional[str] = None
+    status_tinggal:  Optional[str] = None
+    status_keluarga: Optional[str] = None
+    kepala_keluarga: Optional[bool] = None
+    alamat_ktp:      Optional[str] = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 3:
+            raise ValueError("Nama lengkap minimal 3 karakter")
+        if len(v) > 100:
+            raise ValueError("Nama lengkap maksimal 100 karakter")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        v = v.strip().replace("-", "").replace(" ", "")
+        if not _re.match(r"^(\\+62|62|0)[0-9]{8,13}$", v):
+            raise ValueError("Format nomor HP tidak valid (contoh: 081234567890)")
+        if v.startswith("0"):
+            v = "62" + v[1:]
+        elif v.startswith("+"):
+            v = v[1:]
+        return v
+
+    @field_validator("nik")
+    @classmethod
+    def validate_nik(cls, v: Optional[str]) -> Optional[str]:
+        if v is None: return v
+        v = v.strip()
+        if not v.isdigit() or len(v) != 16:
+            raise ValueError("NIK harus 16 digit angka")
+        return v
+
+    @field_validator("no_kk")
+    @classmethod
+    def validate_no_kk(cls, v: Optional[str]) -> Optional[str]:
+        if v is None: return v
+        v = v.strip()
+        if not v.isdigit() or len(v) != 16:
+            raise ValueError("Nomor KK harus 16 digit angka")
+        return v
 
 
 def _integrity_message(e: IntegrityError) -> str:
@@ -108,6 +169,82 @@ async def get_me(
         "rt_group_id": str(user.rt_group_id) if user.rt_group_id else None,
     }
 
+@router.patch("/users/me/profile", tags=["Users"])
+async def update_my_profile(
+    body: UpdateProfileRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update own profile — full_name + phone in users table,
+    rich fields (NIK, tanggal_lahir, agama, etc.) in residents table.
+    """
+    from app.modules.warga.domain.entities import (Agama, JenisKelamin,
+                                                   Pekerjaan, StatusKawin,
+                                                   StatusKeluarga,
+                                                   StatusTinggal)
+    from app.modules.warga.infrastructure.repository import \
+        PgResidentRepository
+
+    user_id = UUID(current_user["user_id"])
+
+    # ── 1. Update users table ─────────────────────────────────────
+    repo = PgUserRepository(db)
+    user = await repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+
+    if body.phone != user.phone:
+        existing = await repo.get_by_phone(body.phone)
+        if existing and existing.id != user.id:
+            raise HTTPException(
+                status_code=409,
+                detail="Nomor HP sudah digunakan akun lain"
+            )
+
+    user.full_name = body.full_name.strip()
+    user.phone     = body.phone
+    saved_user     = await repo.save(user)
+
+    # ── 2. Update residents table (if warga has a resident record) ─
+    resident_repo = PgResidentRepository(db)
+    resident      = await resident_repo.get_by_user_id(user_id)
+
+    if resident:
+        tanggal_lahir = None
+        if body.tanggal_lahir:
+            try:
+                tanggal_lahir = _date.fromisoformat(body.tanggal_lahir)
+            except ValueError:
+                pass
+
+        resident.update_profile(
+            full_name       = body.full_name.strip(),
+            phone           = body.phone,
+            nik             = body.nik,
+            no_kk           = body.no_kk,
+            tanggal_lahir   = tanggal_lahir,
+            tempat_lahir    = body.tempat_lahir,
+            jenis_kelamin   = JenisKelamin(body.jenis_kelamin)   if body.jenis_kelamin   else None,
+            agama           = Agama(body.agama)                   if body.agama           else None,
+            pekerjaan       = Pekerjaan(body.pekerjaan)           if body.pekerjaan       else None,
+            status_kawin    = StatusKawin(body.status_kawin)      if body.status_kawin    else None,
+            status_tinggal  = StatusTinggal(body.status_tinggal)  if body.status_tinggal  else None,
+            status_keluarga = StatusKeluarga(body.status_keluarga)if body.status_keluarga else None,
+            kepala_keluarga = body.kepala_keluarga,
+            alamat_ktp      = body.alamat_ktp,
+        )
+        await resident_repo.save(resident)
+
+    return {
+        "id":        str(saved_user.id),
+        "email":     saved_user.email,
+        "full_name": saved_user.full_name,
+        "phone":     saved_user.phone,
+        "role":      saved_user.role,
+        "status":    saved_user.status,
+        "message":   "Profil berhasil diperbarui",
+    }
 
 @router.patch("/users/{user_id}/verify", tags=["Users"])
 async def verify_user(
@@ -165,6 +302,7 @@ async def suspend_user(
 
 
 # ── RT Groups ─────────────────────────────────────────────────────
+
 class UpdateRTGroupRequest(BaseModel):
     rt_number:       Optional[str] = None
     rw_number:       Optional[str] = None
@@ -173,7 +311,6 @@ class UpdateRTGroupRequest(BaseModel):
     kota:            Optional[str] = None
     provinsi:        Optional[str] = None
     monthly_fee_idr: Optional[int] = None
-
 
 @router.get("/rt-groups", tags=["RT Groups"])
 async def list_rt_groups(

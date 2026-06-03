@@ -1,13 +1,17 @@
+# warga/presentation/api/v1/routes.py
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import EntityNotFoundError
 from app.modules.warga.application.schemas import RegisterResidentRequest
-from app.modules.warga.application.use_cases.register_resident import RegisterResident
-from app.modules.warga.application.use_cases.verify_resident import VerifyResident
+from app.modules.warga.application.use_cases.register_resident import \
+    RegisterResident
+from app.modules.warga.application.use_cases.verify_resident import \
+    VerifyResident
 from app.modules.warga.infrastructure.repository import PgResidentRepository
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -46,6 +50,32 @@ async def list_residents(
              "block_unit": r.block_unit_display, "status": r.status,
              "member_count": r.member_count} for r in residents]
 
+
+
+@router.get("/warga/my-profile", tags=["Warga"])
+async def get_my_profile(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns the resident profile for the logged-in warga."""
+    repo     = PgResidentRepository(db)
+    resident = await repo.get_by_user_id(UUID(current_user["user_id"]))
+    if not resident:
+        return {}
+    return {
+        "nik":             resident.nik,
+        "no_kk":           resident.no_kk,
+        "tanggal_lahir":   resident.tanggal_lahir.isoformat() if resident.tanggal_lahir else None,
+        "tempat_lahir":    resident.tempat_lahir,
+        "jenis_kelamin":   resident.jenis_kelamin.value if resident.jenis_kelamin else None,
+        "agama":           resident.agama.value          if resident.agama         else None,
+        "pekerjaan":       resident.pekerjaan.value      if resident.pekerjaan     else None,
+        "status_kawin":    resident.status_kawin.value   if resident.status_kawin  else None,
+        "status_tinggal":  resident.status_tinggal.value if resident.status_tinggal else None,
+        "status_keluarga": resident.status_keluarga.value if resident.status_keluarga else None,
+        "kepala_keluarga": resident.kepala_keluarga,
+        "alamat_ktp":      resident.alamat_ktp,
+    }
 
 @router.get("/warga/{resident_id}", tags=["Warga"])
 async def get_resident(

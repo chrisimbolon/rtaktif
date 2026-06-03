@@ -257,8 +257,8 @@ export default function BerandaPage() {
               icon:    "👤",
               label:   "Profil Saya",
               desc:    "Update data diri dan nomor HP",
-              href:    null,
-              soon:    true,
+              href:    "/beranda/profil",
+              soon:    false,
             },
           ].map((item) => (
             <div key={item.label}>

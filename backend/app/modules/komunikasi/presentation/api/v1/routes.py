@@ -166,6 +166,40 @@ async def submit_laporan(
     }
 
 
+
+@router.get("/komunikasi/laporan/mine", tags=["Komunikasi"])
+async def get_my_laporan(
+    current_user: dict = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Warga fetches their own laporan submissions."""
+    from app.modules.warga.infrastructure.models import ResidentModel
+    from sqlalchemy import select as sa_select
+
+    user_id = UUID(current_user["user_id"])
+    result  = await db.execute(
+        sa_select(ResidentModel.id)
+        .where(ResidentModel.user_id == user_id)
+    )
+    resident_id = result.scalar_one_or_none()
+    if not resident_id:
+        return []
+
+    laporans = await PgLaporanRepository(db).get_by_resident(resident_id)
+    return [
+        {
+            "id":          str(l.id),
+            "title":       l.title,
+            "description": l.description,
+            "status":      l.status,
+            "photo_url":   l.photo_url,
+            "created_at":  l.created_at.isoformat() if l.created_at else None,
+            "resolved_at": l.resolved_at.isoformat() if l.resolved_at else None,
+            "notes":       l.notes,
+        }
+        for l in laporans
+    ]
+
 @router.get("/komunikasi/laporan/{rt_group_id}", tags=["Komunikasi"])
 async def list_laporan(
     rt_group_id:   UUID,
@@ -408,3 +442,4 @@ async def get_notification_logs(
         }
         for l in logs
     ]
+

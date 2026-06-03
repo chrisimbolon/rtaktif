@@ -297,8 +297,8 @@ export default function BerandaLaporanPage() {
   // Fetch all laporan for this RT (warga sees their own — filtered client-side
   // until we add a dedicated "my laporan" endpoint)
   const { data: allLaporan = [], isLoading } = useQuery({
-    queryKey:  ["my-laporan", rtGroupId],
-    queryFn:   () => komunikasiApi.laporan.list(rtGroupId!),
+    queryKey:  ["my-laporan"],
+    queryFn:   () => komunikasiApi.laporan.myList(),
     enabled:   !!rtGroupId,
     staleTime: 60_000,
   });

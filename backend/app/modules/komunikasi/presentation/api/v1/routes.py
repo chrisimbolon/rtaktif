@@ -194,8 +194,6 @@ async def get_my_laporan(
             "status":      l.status,
             "photo_url":   l.photo_url,
             "created_at":  l.created_at.isoformat() if l.created_at else None,
-            "resolved_at": l.resolved_at.isoformat() if l.resolved_at else None,
-            "notes":       l.notes,
         }
         for l in laporans
     ]

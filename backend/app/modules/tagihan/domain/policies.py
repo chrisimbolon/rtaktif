@@ -13,5 +13,10 @@ class BillingPolicy:
 
     @staticmethod
     def can_generate_for_month(existing_count: int) -> bool:
-        """Prevent duplicate bulk generation."""
-        return existing_count == 0
+        """
+        Allow bulk generation even if some invoices already exist.
+        The use case skips residents that already have an invoice,
+        so this guard is no longer needed here.
+        Individual duplicate prevention is handled per-resident.
+        """
+        return True

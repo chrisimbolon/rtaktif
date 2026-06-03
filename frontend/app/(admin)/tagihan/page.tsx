@@ -479,7 +479,7 @@ function GenerateModal({
           >
             {mutation.isPending
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Membuat...</>
-              : <><Plus className="w-4 h-4" /> Generate Tagihan</>
+              : <><Plus className="w-4 h-4" /> Terbitkan Tagihan</>
             }
           </button>
         </div>
@@ -744,7 +744,7 @@ export default function TagihanPage() {
                 rounded-lg text-sm font-semibold hover:bg-blue-800 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              Generate Tagihan
+              Terbitkan Tagihan
             </button>
           </div>
         </div>
@@ -784,7 +784,7 @@ export default function TagihanPage() {
                 className="mt-4 flex items-center gap-2 mx-auto px-4 py-2
                   bg-blue-900 text-white rounded-lg text-sm font-semibold
                   hover:bg-blue-800">
-                <Plus className="w-4 h-4" /> Generate Tagihan {label}
+                <Plus className="w-4 h-4" /> Terbitkan Tagihan {label}
               </button>
             )}
           </div>

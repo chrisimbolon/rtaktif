@@ -282,3 +282,146 @@ async def mark_overdue(
 ):
     count = await MarkOverdueInvoices(PgInvoiceRepository(db)).execute(rt_group_id)
     return {"marked_overdue": count}
+
+@router.get("/tagihan/keuangan/{rt_group_id}", tags=["Laporan Keuangan"])
+async def get_laporan_keuangan(
+    rt_group_id: UUID,
+    year:        int,
+    current_user: dict = Depends(require_admin),
+    db:          AsyncSession = Depends(get_db),
+):
+    """
+    Laporan keuangan tahunan — aggregated monthly financial report.
+
+    Returns:
+    - monthly_summary: pemasukan per bulan (from payments table)
+    - invoices_summary: tagihan stats per bulan (issued/paid/overdue)
+    - total_collected: total kas terkumpul for the year
+    - total_outstanding: total tagihan belum bayar
+    - payment_history: last 20 payments with resident names
+    """
+    from app.modules.iam.infrastructure.models import UserModel
+    from app.modules.tagihan.infrastructure.models import (InvoiceModel,
+                                                           PaymentModel)
+    from app.modules.warga.infrastructure.models import ResidentModel
+    from sqlalchemy import func, select
+
+    MONTHS_ID = ["","Januari","Februari","Maret","April","Mei","Juni",
+                 "Juli","Agustus","September","Oktober","November","Desember"]
+
+    # ── 1. Monthly payment totals (kas masuk) ────────────────────────────────
+    monthly_result = await db.execute(
+        select(
+            func.extract("month", PaymentModel.paid_at).label("month"),
+            func.sum(PaymentModel.amount_idr).label("total"),
+            func.count(PaymentModel.id).label("count"),
+        )
+        .join(InvoiceModel, InvoiceModel.id == PaymentModel.invoice_id)
+        .where(
+            InvoiceModel.rt_group_id == rt_group_id,
+            func.extract("year", PaymentModel.paid_at) == year,
+        )
+        .group_by(func.extract("month", PaymentModel.paid_at))
+        .order_by(func.extract("month", PaymentModel.paid_at))
+    )
+    monthly_payments = {int(r.month): {"total": r.total, "count": r.count}
+                        for r in monthly_result.all()}
+
+    # ── 2. Invoice stats per month ───────────────────────────────────────────
+    invoice_result = await db.execute(
+        select(
+            InvoiceModel.period_month,
+            InvoiceModel.status,
+            func.count(InvoiceModel.id).label("count"),
+            func.sum(InvoiceModel.amount_idr).label("total"),
+        )
+        .where(
+            InvoiceModel.rt_group_id == rt_group_id,
+            InvoiceModel.period_year == year,
+        )
+        .group_by(InvoiceModel.period_month, InvoiceModel.status)
+        .order_by(InvoiceModel.period_month)
+    )
+    invoice_stats: dict = {}
+    for r in invoice_result.all():
+        m = r.period_month
+        if m not in invoice_stats:
+            invoice_stats[m] = {"paid": 0, "issued": 0, "overdue": 0,
+                                 "paid_amount": 0, "unpaid_amount": 0}
+        if r.status == "paid":
+            invoice_stats[m]["paid"]        += r.count
+            invoice_stats[m]["paid_amount"] += r.total
+        elif r.status == "issued":
+            invoice_stats[m]["issued"]        += r.count
+            invoice_stats[m]["unpaid_amount"] += r.total
+        elif r.status == "overdue":
+            invoice_stats[m]["overdue"]       += r.count
+            invoice_stats[m]["unpaid_amount"] += r.total
+
+    # ── 3. Build monthly summary for chart ───────────────────────────────────
+    monthly_summary = []
+    for m in range(1, 13):
+        pay   = monthly_payments.get(m, {"total": 0, "count": 0})
+        stats = invoice_stats.get(m, {"paid": 0, "issued": 0, "overdue": 0,
+                                       "paid_amount": 0, "unpaid_amount": 0})
+        monthly_summary.append({
+            "month":         m,
+            "month_label":   MONTHS_ID[m],
+            "month_short":   MONTHS_ID[m][:3],
+            "kas_masuk":     int(pay["total"] or 0),
+            "payment_count": int(pay["count"] or 0),
+            "paid":          stats["paid"],
+            "issued":        stats["issued"],
+            "overdue":       stats["overdue"],
+            "paid_amount":   int(stats["paid_amount"] or 0),
+            "unpaid_amount": int(stats["unpaid_amount"] or 0),
+        })
+
+    # ── 4. Totals ─────────────────────────────────────────────────────────────
+    total_collected   = sum(m["kas_masuk"]     for m in monthly_summary)
+    total_outstanding = sum(m["unpaid_amount"] for m in monthly_summary)
+    total_paid        = sum(m["paid"]          for m in monthly_summary)
+    total_unpaid      = sum(m["issued"] + m["overdue"] for m in monthly_summary)
+
+    # ── 5. Recent payment history (last 20) ──────────────────────────────────
+    history_result = await db.execute(
+        select(
+            PaymentModel.id,
+            PaymentModel.amount_idr,
+            PaymentModel.method,
+            PaymentModel.paid_at,
+            PaymentModel.bukti_url,
+            UserModel.full_name,
+            InvoiceModel.period_month,
+            InvoiceModel.period_year,
+        )
+        .join(InvoiceModel, InvoiceModel.id == PaymentModel.invoice_id)
+        .join(ResidentModel, ResidentModel.id == PaymentModel.resident_id)
+        .join(UserModel, UserModel.id == ResidentModel.user_id)
+        .where(InvoiceModel.rt_group_id == rt_group_id)
+        .order_by(PaymentModel.paid_at.desc())
+        .limit(20)
+    )
+    payment_history = [
+        {
+            "id":           str(r.id),
+            "resident_name": r.full_name,
+            "amount_idr":   r.amount_idr,
+            "method":       r.method,
+            "paid_at":      r.paid_at.isoformat() if r.paid_at else None,
+            "bukti_url":    r.bukti_url,
+            "period":       f"{MONTHS_ID[r.period_month]} {r.period_year}",
+        }
+        for r in history_result.all()
+    ]
+
+    return {
+        "year":             year,
+        "rt_group_id":      str(rt_group_id),
+        "monthly_summary":  monthly_summary,
+        "total_collected":  total_collected,
+        "total_outstanding": total_outstanding,
+        "total_paid_invoices": total_paid,
+        "total_unpaid_invoices": total_unpaid,
+        "payment_history":  payment_history,
+    }

@@ -74,8 +74,11 @@ async def get_my_profile(
         "status_kawin":    resident.status_kawin.value   if resident.status_kawin  else None,
         "status_tinggal":  resident.status_tinggal.value if resident.status_tinggal else None,
         "status_keluarga": resident.status_keluarga.value if resident.status_keluarga else None,
-        "kepala_keluarga": resident.kepala_keluarga,
-        "alamat_ktp":      resident.alamat_ktp,
+        "kepala_keluarga":     resident.kepala_keluarga,
+        "alamat_ktp":          resident.alamat_ktp,
+        "pendidikan_terakhir": resident.pendidikan_terakhir.value if resident.pendidikan_terakhir else None,
+        "kewarganegaraan":     resident.kewarganegaraan.value if resident.kewarganegaraan else None,
+        "hubungan_dengan_kk":  resident.hubungan_dengan_kk.value if resident.hubungan_dengan_kk else None,
     }
 
 @router.get("/warga/user/{user_id}/profile", tags=["Warga"])

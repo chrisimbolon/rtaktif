@@ -47,7 +47,10 @@ class UpdateProfileRequest(BaseModel):
     status_tinggal:  Optional[str] = None
     status_keluarga: Optional[str] = None
     kepala_keluarga: Optional[bool] = None
-    alamat_ktp:      Optional[str] = None
+    alamat_ktp:          Optional[str] = None
+    pendidikan_terakhir: Optional[str] = None
+    kewarganegaraan:     Optional[str] = None
+    hubungan_dengan_kk:  Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -179,9 +182,10 @@ async def update_my_profile(
     Update own profile — full_name + phone in users table,
     rich fields (NIK, tanggal_lahir, agama, etc.) in residents table.
     """
-    from app.modules.warga.domain.entities import (Agama, JenisKelamin,
-                                                   Pekerjaan, StatusKawin,
-                                                   StatusKeluarga,
+    from app.modules.warga.domain.entities import (Agama, HubunganDenganKK,
+                                                   JenisKelamin, Kewarganegaraan,
+                                                   PendidikanTerakhir, Pekerjaan,
+                                                   StatusKawin, StatusKeluarga,
                                                    StatusTinggal)
     from app.modules.warga.infrastructure.repository import \
         PgResidentRepository
@@ -232,7 +236,10 @@ async def update_my_profile(
             status_tinggal  = StatusTinggal(body.status_tinggal)  if body.status_tinggal  else None,
             status_keluarga = StatusKeluarga(body.status_keluarga)if body.status_keluarga else None,
             kepala_keluarga = body.kepala_keluarga,
-            alamat_ktp      = body.alamat_ktp,
+            alamat_ktp           = body.alamat_ktp,
+            pendidikan_terakhir  = PendidikanTerakhir(body.pendidikan_terakhir) if body.pendidikan_terakhir else None,
+            kewarganegaraan      = Kewarganegaraan(body.kewarganegaraan)        if body.kewarganegaraan     else None,
+            hubungan_dengan_kk   = HubunganDenganKK(body.hubungan_dengan_kk)   if body.hubungan_dengan_kk  else None,
         )
         await resident_repo.save(resident)
 

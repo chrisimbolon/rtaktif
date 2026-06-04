@@ -77,6 +77,37 @@ class StatusKeluarga(str, Enum):
     LAINNYA    = "LAINNYA"
     NA         = "N/A"
 
+class PendidikanTerakhir(str, Enum):
+    TIDAK_SEKOLAH   = "TIDAK SEKOLAH"
+    BELUM_SEKOLAH   = "BELUM SEKOLAH"
+    SD              = "SD"
+    SMP             = "SMP"
+    SMA             = "SMA"
+    SMK             = "SMK"
+    D3              = "D3"
+    S1              = "S1"
+    S2              = "S2"
+    S3              = "S3"
+    LAINNYA         = "LAINNYA"
+
+
+class Kewarganegaraan(str, Enum):
+    WNI = "WNI"
+    WNA = "WNA"
+
+
+class HubunganDenganKK(str, Enum):
+    KEPALA_KELUARGA = "KEPALA KELUARGA"
+    SUAMI           = "SUAMI"
+    ISTRI           = "ISTRI"
+    ANAK            = "ANAK"
+    MENANTU         = "MENANTU"
+    CUCU            = "CUCU"
+    ORANG_TUA       = "ORANG TUA"
+    MERTUA          = "MERTUA"
+    SAUDARA         = "SAUDARA"
+    PEMBANTU        = "PEMBANTU"
+    LAINNYA         = "LAINNYA"
 
 @dataclass
 class Resident(BaseEntity):
@@ -102,6 +133,12 @@ class Resident(BaseEntity):
     jenis_kelamin:  Optional[JenisKelamin]      = None
     agama:          Optional[Agama]             = None
     alamat_ktp:     Optional[str]               = None
+
+    pendidikan_terakhir: Optional[PendidikanTerakhir] = None
+    kewarganegaraan:     Kewarganegaraan               = Kewarganegaraan.WNI
+    hubungan_dengan_kk:  Optional[HubunganDenganKK]   = None
+
+
 
     # ── Socioeconomic fields ──────────────────────────────────────
     pekerjaan:      Optional[Pekerjaan]         = None
@@ -173,7 +210,10 @@ class Resident(BaseEntity):
         status_tinggal:  Optional[StatusTinggal] = None,
         status_keluarga: Optional[StatusKeluarga]= None,
         kepala_keluarga: Optional[bool]          = None,
-        alamat_ktp:      Optional[str]           = None,
+        alamat_ktp:          Optional[str]             = None,
+        pendidikan_terakhir: Optional[PendidikanTerakhir] = None,
+        kewarganegaraan:     Optional[Kewarganegaraan]    = None,
+        hubungan_dengan_kk:  Optional[HubunganDenganKK]  = None,
     ) -> None:
         """Update mutable profile fields. None values are ignored (partial update)."""
         if full_name       is not None: self.full_name       = full_name.strip()
@@ -189,7 +229,10 @@ class Resident(BaseEntity):
         if status_tinggal  is not None: self.status_tinggal  = status_tinggal
         if status_keluarga is not None: self.status_keluarga = status_keluarga
         if kepala_keluarga is not None: self.kepala_keluarga = kepala_keluarga
-        if alamat_ktp      is not None: self.alamat_ktp      = alamat_ktp.strip()
+        if alamat_ktp            is not None: self.alamat_ktp            = alamat_ktp.strip()
+        if pendidikan_terakhir   is not None: self.pendidikan_terakhir   = pendidikan_terakhir
+        if kewarganegaraan       is not None: self.kewarganegaraan       = kewarganegaraan
+        if hubungan_dengan_kk    is not None: self.hubungan_dengan_kk    = hubungan_dengan_kk
 
     def verify(self, verified_by: UUID) -> None:
         if self.status != ResidentStatus.PENDING:

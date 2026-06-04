@@ -42,6 +42,11 @@ class ResidentModel(Base):
     agama:          Mapped[str | None]      = mapped_column(String(20),  nullable=True)
     alamat_ktp:     Mapped[str | None]      = mapped_column(Text,        nullable=True)
 
+    # ── Education + citizenship ───────────────────────────────────────────────
+    pendidikan_terakhir: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    kewarganegaraan:     Mapped[str]        = mapped_column(String(10), server_default="WNI", nullable=False)
+    hubungan_dengan_kk:  Mapped[str | None] = mapped_column(String(30), nullable=True)
+
     # ── Socioeconomic ─────────────────────────────────────────────
     pekerjaan:      Mapped[str | None]      = mapped_column(String(50),  nullable=True)
     status_kawin:   Mapped[str | None]      = mapped_column(String(20),  nullable=True)

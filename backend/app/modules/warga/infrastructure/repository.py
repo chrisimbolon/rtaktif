@@ -2,10 +2,12 @@
 from typing import Optional
 from uuid import UUID
 
-from app.modules.warga.domain.entities import (
-    Agama, JenisKelamin, OwnershipType, Pekerjaan,
-    Resident, ResidentStatus, StatusKawin, StatusKeluarga, StatusTinggal,
-)
+from app.modules.warga.domain.entities import (Agama, HubunganDenganKK,
+                                               JenisKelamin, Kewarganegaraan,
+                                               OwnershipType, Pekerjaan,
+                                               PendidikanTerakhir, Resident,
+                                               ResidentStatus, StatusKawin,
+                                               StatusKeluarga, StatusTinggal)
 from app.modules.warga.domain.repositories import ResidentRepository
 from app.modules.warga.infrastructure.models import ResidentModel
 from sqlalchemy import select
@@ -66,6 +68,9 @@ class PgResidentRepository(ResidentRepository):
             existing.status_keluarga = entity.status_keluarga.value  if entity.status_keluarga else None
             existing.kepala_keluarga = entity.kepala_keluarga
             existing.alamat_ktp      = entity.alamat_ktp
+            existing.pendidikan_terakhir = entity.pendidikan_terakhir.value if entity.pendidikan_terakhir else None
+            existing.kewarganegaraan     = entity.kewarganegaraan.value if entity.kewarganegaraan else "WNI"
+            existing.hubungan_dengan_kk  = entity.hubungan_dengan_kk.value if entity.hubungan_dengan_kk else None
         else:
             self.session.add(ResidentModel(
                 id             = entity.id,
@@ -139,4 +144,7 @@ class PgResidentRepository(ResidentRepository):
             status_keluarga = StatusKeluarga(row.status_keluarga) if row.status_keluarga else None,
             kepala_keluarga = row.kepala_keluarga or False,
             alamat_ktp      = row.alamat_ktp,
+            pendidikan_terakhir = PendidikanTerakhir(row.pendidikan_terakhir) if row.pendidikan_terakhir else None,
+            kewarganegaraan     = Kewarganegaraan(row.kewarganegaraan) if row.kewarganegaraan else Kewarganegaraan.WNI,
+            hubungan_dengan_kk  = HubunganDenganKK(row.hubungan_dengan_kk) if row.hubungan_dengan_kk else None,
         )

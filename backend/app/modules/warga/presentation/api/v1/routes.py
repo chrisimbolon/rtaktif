@@ -9,6 +9,7 @@ from app.modules.warga.application.use_cases.register_resident import \
     RegisterResident
 from app.modules.warga.application.use_cases.verify_resident import \
     VerifyResident
+from app.modules.warga.infrastructure.models import ResidentModel
 from app.modules.warga.infrastructure.repository import PgResidentRepository
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +77,117 @@ async def get_my_profile(
         "kepala_keluarga": resident.kepala_keluarga,
         "alamat_ktp":      resident.alamat_ktp,
     }
+
+@router.get("/warga/user/{user_id}/profile", tags=["Warga"])
+async def get_warga_full_profile(
+    user_id:      UUID,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Returns full resident profile for a given user_id.
+    Used by clicking a warga row in Data Warga page.
+    """
+    repo     = PgResidentRepository(db)
+    resident = await repo.get_by_user_id(user_id)
+    if not resident:
+        raise HTTPException(status_code=404, detail="Data warga tidak ditemukan")
+
+    result = _resident_detail_from_entity(resident)
+
+    # If they have a no_kk, fetch all KK members too
+    if resident.no_kk:
+        from sqlalchemy import select as sa_select
+        kk_result = await db.execute(
+            sa_select(ResidentModel)
+            .where(
+                ResidentModel.no_kk == resident.no_kk,
+                ResidentModel.id != resident.id,
+            )
+            .order_by(ResidentModel.kepala_keluarga.desc())
+        )
+        other_members = kk_result.scalars().all()
+        result["kk_members"] = [_resident_detail(r) for r in other_members]
+    else:
+        result["kk_members"] = []
+
+    return result
+
+
+def _resident_detail(row) -> dict:
+    """Convert ResidentModel row to detail dict."""
+    return {
+        "id":                  str(row.id),
+        "full_name":           row.full_name,
+        "nik":                 row.nik,
+        "no_kk":               row.no_kk,
+        "tanggal_lahir":       row.tanggal_lahir.isoformat() if row.tanggal_lahir else None,
+        "tempat_lahir":        row.tempat_lahir,
+        "jenis_kelamin":       row.jenis_kelamin,
+        "agama":               row.agama,
+        "pekerjaan":           row.pekerjaan,
+        "status_kawin":        row.status_kawin,
+        "status_tinggal":      row.status_tinggal,
+        "status_keluarga":     row.status_keluarga,
+        "hubungan_dengan_kk":  row.hubungan_dengan_kk,
+        "kepala_keluarga":     row.kepala_keluarga,
+        "pendidikan_terakhir": row.pendidikan_terakhir,
+        "kewarganegaraan":     row.kewarganegaraan,
+        "alamat_ktp":          row.alamat_ktp,
+        "phone":               row.phone,
+        "block_unit":          f"Blok {row.block} No. {row.unit_number}" if row.block else None,
+    }
+
+
+def _resident_detail_from_entity(r) -> dict:
+    """Convert Resident entity to detail dict."""
+    return {
+        "id":                  str(r.id),
+        "full_name":           r.full_name,
+        "nik":                 r.nik,
+        "no_kk":               r.no_kk,
+        "tanggal_lahir":       r.tanggal_lahir.isoformat() if r.tanggal_lahir else None,
+        "tempat_lahir":        r.tempat_lahir,
+        "jenis_kelamin":       r.jenis_kelamin.value if r.jenis_kelamin else None,
+        "agama":               r.agama.value if r.agama else None,
+        "pekerjaan":           r.pekerjaan.value if r.pekerjaan else None,
+        "status_kawin":        r.status_kawin.value if r.status_kawin else None,
+        "status_tinggal":      r.status_tinggal.value if r.status_tinggal else None,
+        "status_keluarga":     r.status_keluarga.value if r.status_keluarga else None,
+        "hubungan_dengan_kk":  r.hubungan_dengan_kk.value if r.hubungan_dengan_kk else None,
+        "kepala_keluarga":     r.kepala_keluarga,
+        "pendidikan_terakhir": r.pendidikan_terakhir.value if r.pendidikan_terakhir else None,
+        "kewarganegaraan":     r.kewarganegaraan.value if r.kewarganegaraan else "WNI",
+        "alamat_ktp":          r.alamat_ktp,
+        "phone":               r.phone,
+        "block_unit":          r.block_unit_display,
+    }
+
+@router.get("/warga/kk/{no_kk}", tags=["Warga"])
+async def get_kk_members(
+    no_kk:        str,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Returns all residents sharing the same no_kk (Kartu Keluarga).
+    Used by the KK modal in Data Warga page.
+    """
+    from app.modules.iam.infrastructure.models import UserModel
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(
+        sa_select(ResidentModel)
+        .where(ResidentModel.no_kk == no_kk)
+        .order_by(ResidentModel.kepala_keluarga.desc())
+    )
+    residents = result.scalars().all()
+
+    if not residents:
+        return []
+
+    repo = PgResidentRepository(db)
+    return [_resident_detail(r) for r in residents]
 
 @router.get("/warga/{resident_id}", tags=["Warga"])
 async def get_resident(

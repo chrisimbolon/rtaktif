@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { useRTStore } from "@/store/rt.store";
 import {
+  BarChart3,
   ClipboardList,
   CreditCard,
   LayoutDashboard,
@@ -22,6 +23,7 @@ const NAV = [
   { label: "Tagihan",    href: "/tagihan",     icon: CreditCard      },
   { label: "Pengumuman", href: "/pengumuman",  icon: Megaphone       },
   { label: "Laporan",    href: "/laporan",     icon: ClipboardList   },
+  { label: "Keuangan",   href: "/laporan-keuangan", icon: BarChart3    },
   { label: "Pengaturan", href: "/pengaturan",  icon: Settings        },
 ];
 

@@ -50,35 +50,41 @@ const STATUS_KELUARGA_OPTIONS = [
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface UpdateProfilePayload {
-  full_name:       string;
-  phone:           string;
-  nik?:            string;
-  no_kk?:          string;
-  tanggal_lahir?:  string;
-  tempat_lahir?:   string;
-  jenis_kelamin?:  string;
-  agama?:          string;
-  pekerjaan?:      string;
-  status_kawin?:   string;
-  status_tinggal?: string;
-  status_keluarga?:string;
-  kepala_keluarga?:boolean;
-  alamat_ktp?:     string;
+  full_name:            string;
+  phone:                string;
+  nik?:                 string;
+  no_kk?:               string;
+  tanggal_lahir?:       string;
+  tempat_lahir?:        string;
+  jenis_kelamin?:       string;
+  agama?:               string;
+  pekerjaan?:           string;
+  status_kawin?:        string;
+  status_tinggal?:      string;
+  status_keluarga?:     string;
+  kepala_keluarga?:     boolean;
+  alamat_ktp?:          string;
+  pendidikan_terakhir?: string;
+  kewarganegaraan?:     string;
+  hubungan_dengan_kk?:  string;
 }
 
 interface ResidentProfile {
-  nik?:            string;
-  no_kk?:          string;
-  tanggal_lahir?:  string;
-  tempat_lahir?:   string;
-  jenis_kelamin?:  string;
-  agama?:          string;
-  pekerjaan?:      string;
-  status_kawin?:   string;
-  status_tinggal?: string;
-  status_keluarga?:string;
-  kepala_keluarga?:boolean;
-  alamat_ktp?:     string;
+  nik?:                string;
+  no_kk?:              string;
+  tanggal_lahir?:      string;
+  tempat_lahir?:       string;
+  jenis_kelamin?:      string;
+  agama?:              string;
+  pekerjaan?:          string;
+  status_kawin?:       string;
+  status_tinggal?:     string;
+  status_keluarga?:    string;
+  kepala_keluarga?:    boolean;
+  alamat_ktp?:         string;
+  pendidikan_terakhir?:string;
+  kewarganegaraan?:    string;
+  hubungan_dengan_kk?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -150,6 +156,15 @@ function Section({ title, subtitle }: { title: string; subtitle?: string }) {
   );
 }
 
+const PENDIDIKAN_OPTIONS = [
+  "TIDAK SEKOLAH","BELUM SEKOLAH","SD","SMP","SMA","SMK","D3","S1","S2","S3","LAINNYA"
+];
+const KEWARGANEGARAAN_OPTIONS = ["WNI","WNA"];
+const HUBUNGAN_KK_OPTIONS = [
+  "KEPALA KELUARGA","SUAMI","ISTRI","ANAK","MENANTU",
+  "CUCU","ORANG TUA","MERTUA","SAUDARA","PEMBANTU","LAINNYA"
+];
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ProfilPage() {
@@ -180,6 +195,9 @@ export default function ProfilPage() {
   const [statusTinggal,   setStatusTinggal]   = useState("TETAP");
   const [statusKeluarga,  setStatusKeluarga]  = useState("");
   const [kepalaKeluarga,  setKepalaKeluarga]  = useState(false);
+  const [pendidikan,      setPendidikan]      = useState("");
+  const [kewarganegaraan, setKewarganegaraan] = useState("WNI");
+  const [hubunganKK,      setHubunganKK]      = useState("");
   const [alamatKtp,       setAlamatKtp]       = useState("");
 
   const [isDirty, setIsDirty] = useState(false);
@@ -215,6 +233,9 @@ export default function ProfilPage() {
     if (resident.status_tinggal)  setStatusTinggal(resident.status_tinggal);
     if (resident.status_keluarga) setStatusKeluarga(resident.status_keluarga);
     if (resident.kepala_keluarga !== undefined) setKepalaKeluarga(resident.kepala_keluarga ?? false);
+    if (resident.pendidikan_terakhir) setPendidikan(resident.pendidikan_terakhir);
+    if (resident.kewarganegaraan)     setKewarganegaraan(resident.kewarganegaraan);
+    if (resident.hubungan_dengan_kk)  setHubunganKK(resident.hubungan_dengan_kk);
     if (resident.alamat_ktp)      setAlamatKtp(resident.alamat_ktp);
   }, [resident]);
 
@@ -245,7 +266,10 @@ export default function ProfilPage() {
         status_kawin:    statusKawin  || undefined,
         status_tinggal:  statusTinggal || undefined,
         status_keluarga: statusKeluarga || undefined,
-        kepala_keluarga: kepalaKeluarga,
+        kepala_keluarga:     kepalaKeluarga,
+        pendidikan_terakhir: pendidikan    || undefined,
+        kewarganegaraan:     kewarganegaraan || undefined,
+        hubungan_dengan_kk:  hubunganKK    || undefined,
         alamat_ktp:      alamatKtp || undefined,
       };
       return apiClient.patch("/users/me/profile", payload);
@@ -568,6 +592,28 @@ export default function ProfilPage() {
               </button>
             </div>
           </div>
+
+          {/* Pendidikan + Kewarganegaraan + Hubungan KK */}
+          <SelectField
+            label="Pendidikan Terakhir"
+            value={pendidikan}
+            onChange={setPendidikan}
+            options={PENDIDIKAN_OPTIONS}
+            placeholder="Pilih pendidikan terakhir"
+          />
+          <SelectField
+            label="Kewarganegaraan"
+            value={kewarganegaraan}
+            onChange={setKewarganegaraan}
+            options={KEWARGANEGARAAN_OPTIONS}
+          />
+          <SelectField
+            label="Hubungan dengan Kepala KK"
+            value={hubunganKK}
+            onChange={setHubunganKK}
+            options={HUBUNGAN_KK_OPTIONS}
+            placeholder="Pilih hubungan dengan KK"
+          />
 
           {/* Save button */}
           <div className="px-5 pb-5 pt-2">

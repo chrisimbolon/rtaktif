@@ -591,29 +591,28 @@ export default function ProfilPage() {
                   }`} />
               </button>
             </div>
-          </div>
 
-          {/* Pendidikan + Kewarganegaraan + Hubungan KK */}
-          <SelectField
-            label="Pendidikan Terakhir"
-            value={pendidikan}
-            onChange={setPendidikan}
-            options={PENDIDIKAN_OPTIONS}
-            placeholder="Pilih pendidikan terakhir"
-          />
-          <SelectField
-            label="Kewarganegaraan"
-            value={kewarganegaraan}
-            onChange={setKewarganegaraan}
-            options={KEWARGANEGARAAN_OPTIONS}
-          />
-          <SelectField
-            label="Hubungan dengan Kepala KK"
-            value={hubunganKK}
-            onChange={setHubunganKK}
-            options={HUBUNGAN_KK_OPTIONS}
-            placeholder="Pilih hubungan dengan KK"
-          />
+            <SelectField
+              label="Pendidikan Terakhir"
+              value={pendidikan}
+              onChange={setPendidikan}
+              options={PENDIDIKAN_OPTIONS}
+              placeholder="Pilih pendidikan terakhir"
+            />
+            <SelectField
+              label="Kewarganegaraan"
+              value={kewarganegaraan}
+              onChange={setKewarganegaraan}
+              options={KEWARGANEGARAAN_OPTIONS}
+            />
+            <SelectField
+              label="Hubungan dengan Kepala KK"
+              value={hubunganKK}
+              onChange={setHubunganKK}
+              options={HUBUNGAN_KK_OPTIONS}
+              placeholder="Pilih hubungan dengan KK"
+            />
+          </div>
 
           {/* Save button */}
           <div className="px-5 pb-5 pt-2">

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useRTStore } from "@/store/rt.store";
 import {
   BarChart3,
+  PieChart,
   ClipboardList,
   CreditCard,
   LayoutDashboard,
@@ -24,6 +25,7 @@ const NAV = [
   { label: "Pengumuman", href: "/pengumuman",  icon: Megaphone       },
   { label: "Laporan",    href: "/laporan",     icon: ClipboardList   },
   { label: "Keuangan",   href: "/laporan-keuangan", icon: BarChart3    },
+  { label: "Statistik",  href: "/statistik",        icon: PieChart     },
   { label: "Pengaturan", href: "/pengaturan",  icon: Settings        },
 ];
 

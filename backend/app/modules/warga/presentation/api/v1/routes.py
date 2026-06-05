@@ -359,3 +359,72 @@ async def verify_resident(
         return {"id": str(resident.id), "status": resident.status}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=e.message)
+
+@router.get("/warga/statistik/{rt_group_id}", tags=["Warga"])
+async def get_statistik_demografis(
+    rt_group_id:  UUID,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    from datetime import date
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(
+        sa_select(ResidentModel).where(
+            ResidentModel.rt_group_id == rt_group_id,
+            ResidentModel.status      == "active",
+        )
+    )
+    all_residents = result.scalars().all()
+    total = len(all_residents)
+
+    if total == 0:
+        return {"total_warga": 0, "total_kk": 0, "kepala_keluarga": 0,
+                "jenis_kelamin": [], "agama": [], "pendidikan": [],
+                "pekerjaan": [], "status_tinggal": [], "usia": [],
+                "kewarganegaraan": []}
+
+    def count_by(field):
+        counts = {}
+        for r in all_residents:
+            val = getattr(r, field, None) or "Tidak Diisi"
+            counts[val] = counts.get(val, 0) + 1
+        return [{"name": k, "value": v}
+                for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+
+    today = date.today()
+    usia_buckets = {"Balita (0-4)": 0, "Anak (5-11)": 0,
+                    "Remaja (12-18)": 0, "Dewasa (19-59)": 0,
+                    "Lansia (60+)": 0, "Tidak Diisi": 0}
+    for r in all_residents:
+        if not r.tanggal_lahir:
+            usia_buckets["Tidak Diisi"] += 1
+            continue
+        age = (today - r.tanggal_lahir).days // 365
+        if age <= 4:    usia_buckets["Balita (0-4)"] += 1
+        elif age <= 11: usia_buckets["Anak (5-11)"] += 1
+        elif age <= 18: usia_buckets["Remaja (12-18)"] += 1
+        elif age <= 59: usia_buckets["Dewasa (19-59)"] += 1
+        else:           usia_buckets["Lansia (60+)"] += 1
+
+    PENDIDIKAN_ORDER = ["TIDAK SEKOLAH","BELUM SEKOLAH","SD","SMP","SMA",
+                        "SMK","D3","S1","S2","S3","LAINNYA","Tidak Diisi"]
+    pend_counts = {}
+    for r in all_residents:
+        val = r.pendidikan_terakhir or "Tidak Diisi"
+        pend_counts[val] = pend_counts.get(val, 0) + 1
+
+    return {
+        "total_warga":     total,
+        "total_kk":        len({r.no_kk for r in all_residents if r.no_kk}),
+        "kepala_keluarga": sum(1 for r in all_residents if r.kepala_keluarga),
+        "jenis_kelamin":   count_by("jenis_kelamin"),
+        "agama":           count_by("agama"),
+        "pendidikan":      [{"name": k, "value": pend_counts[k]}
+                            for k in PENDIDIKAN_ORDER if k in pend_counts],
+        "pekerjaan":       count_by("pekerjaan"),
+        "status_tinggal":  count_by("status_tinggal"),
+        "usia":            [{"name": k, "value": v}
+                            for k, v in usia_buckets.items() if v > 0],
+        "kewarganegaraan": count_by("kewarganegaraan"),
+    }

@@ -30,3 +30,21 @@ class ResidentResponse(BaseModel):
     member_count: int
     kk_file_url: Optional[str]
     ktp_file_url: Optional[str]
+
+
+class AddAnggotaRequest(BaseModel):
+    """Request body for adding a family member (anggota KK)."""
+    full_name:           str
+    hubungan_dengan_kk:  str
+
+    phone:               Optional[str] = None
+    nik:                 Optional[str] = None
+    tanggal_lahir:       Optional[str] = None
+    tempat_lahir:        Optional[str] = None
+    jenis_kelamin:       Optional[str] = None
+    agama:               Optional[str] = None
+    pekerjaan:           Optional[str] = None
+    status_kawin:        Optional[str] = None
+    status_tinggal:      Optional[str] = None
+    pendidikan_terakhir: Optional[str] = None
+    kewarganegaraan:     Optional[str] = None

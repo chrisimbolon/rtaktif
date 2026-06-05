@@ -169,8 +169,10 @@ class Resident(BaseEntity):
     ktp_file_url:   Optional[str]               = None
 
     # ── Verification ─────────────────────────────────────────────
-    verified_at:    Optional[datetime]          = None
-    verified_by:    Optional[UUID]              = None
+    verified_at:      Optional[datetime]        = None
+    verified_by:      Optional[UUID]            = None
+    is_anggota_kk:    bool                      = False
+    added_by_user_id: Optional[UUID]            = None
 
     @classmethod
     def register(

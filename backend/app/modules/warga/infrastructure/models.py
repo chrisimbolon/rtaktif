@@ -13,7 +13,7 @@ from sqlalchemy.sql import func
 class ResidentModel(Base):
     __tablename__ = "residents"
     __table_args__ = (
-        UniqueConstraint("rt_group_id", "user_id", name="uq_residents_rt_user"),
+        # UniqueConstraint("rt_group_id", "user_id", name="uq_residents_rt_user"),
         Index("ix_residents_rt_status",     "rt_group_id", "status"),
         Index("ix_residents_status_tinggal","status_tinggal"),
         Index("ix_residents_no_kk",         "no_kk"),
@@ -24,10 +24,13 @@ class ResidentModel(Base):
         UUID(as_uuid=True), ForeignKey("rt_groups.id", ondelete="RESTRICT"),
         nullable=False, index=True,
     )
-    user_id:        Mapped[uuid.UUID]       = mapped_column(
+    user_id:        Mapped[uuid.UUID | None]       = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        nullable=True, index=True,
     )
+
+    is_anggota_kk:    Mapped[bool]           = mapped_column(Boolean, server_default="false", nullable=False)
+    added_by_user_id: Mapped[uuid.UUID | None]= mapped_column(UUID(as_uuid=True), nullable=True)
 
     # ── Core identity ──────────────────────────────────────────────
     full_name:      Mapped[str]             = mapped_column(String(255), nullable=False)

@@ -4,7 +4,7 @@ from uuid import UUID
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import EntityNotFoundError
-from app.modules.warga.application.schemas import RegisterResidentRequest
+from app.modules.warga.application.schemas import AddAnggotaRequest, RegisterResidentRequest
 from app.modules.warga.application.use_cases.register_resident import \
     RegisterResident
 from app.modules.warga.application.use_cases.verify_resident import \
@@ -191,6 +191,145 @@ async def get_kk_members(
 
     repo = PgResidentRepository(db)
     return [_resident_detail(r) for r in residents]
+
+@router.get("/warga/my-keluarga", tags=["Warga"])
+async def get_my_keluarga(
+    current_user: dict = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Returns all anggota KK added by the logged-in warga."""
+    from sqlalchemy import select as sa_select
+    repo    = PgResidentRepository(db)
+    user_id = UUID(current_user["user_id"])
+    me      = await repo.get_by_user_id(user_id)
+
+    if not me:
+        return {"kepala": None, "anggota": [], "no_kk": None}
+
+    result = await db.execute(
+        sa_select(ResidentModel)
+        .where(
+            ResidentModel.added_by_user_id == user_id,
+            ResidentModel.is_anggota_kk   == True,
+        )
+        .order_by(ResidentModel.created_at)
+    )
+    anggota_rows = result.scalars().all()
+
+    return {
+        "no_kk":   me.no_kk,
+        "kepala":  _resident_detail_from_entity(me),
+        "anggota": [_resident_detail(r) for r in anggota_rows],
+    }
+
+
+@router.post("/warga/anggota", status_code=201, tags=["Warga"])
+async def add_anggota_kk(
+    body:         AddAnggotaRequest,
+    current_user: dict = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Warga (Kepala KK) adds a family member without a user account."""
+    import uuid as _uuid
+    from datetime import date as _date, datetime, timezone
+
+    repo    = PgResidentRepository(db)
+    user_id = UUID(current_user["user_id"])
+    me      = await repo.get_by_user_id(user_id)
+
+    if not me:
+        raise HTTPException(status_code=403,
+            detail="Anda belum terdaftar sebagai warga RT")
+
+    if not me.no_kk:
+        raise HTTPException(status_code=422,
+            detail="Lengkapi No. KK di Profil Saya terlebih dahulu "
+                   "sebelum menambah anggota keluarga")
+
+    tanggal_lahir = None
+    if body.tanggal_lahir:
+        try:
+            tanggal_lahir = _date.fromisoformat(body.tanggal_lahir)
+        except ValueError:
+            pass
+
+    now = datetime.now(timezone.utc)
+    anggota_row = ResidentModel(
+        id               = _uuid.uuid4(),
+        rt_group_id      = me.rt_group_id,
+        user_id          = None,
+        full_name        = body.full_name.strip(),
+        phone            = body.phone or "",
+        no_kk            = me.no_kk,
+        nik              = body.nik,
+        tanggal_lahir    = tanggal_lahir,
+        tempat_lahir     = body.tempat_lahir,
+        jenis_kelamin    = body.jenis_kelamin,
+        agama            = body.agama,
+        pekerjaan        = body.pekerjaan,
+        status_kawin     = body.status_kawin,
+        status_tinggal   = body.status_tinggal or "TETAP",
+        hubungan_dengan_kk  = body.hubungan_dengan_kk,
+        pendidikan_terakhir = body.pendidikan_terakhir,
+        kewarganegaraan  = body.kewarganegaraan or "WNI",
+        kepala_keluarga  = False,
+        is_anggota_kk    = True,
+        added_by_user_id = user_id,
+        status           = "active",
+        ownership_type   = me.ownership_type.value if me.ownership_type else "owner",
+        street           = me.street or "",
+        rt_number        = me.rt_number or "",
+        rw_number        = me.rw_number or "",
+        kelurahan        = me.kelurahan or "",
+        kecamatan        = me.kecamatan or "",
+        kota             = me.kota or "",
+        block            = me.block or "",
+        unit_number      = me.unit_number or "",
+        member_count     = 1,
+        created_at       = now,
+        updated_at       = now,
+    )
+    db.add(anggota_row)
+    await db.flush()
+    await db.commit()
+    await db.refresh(anggota_row)
+
+    return {
+        "id":        str(anggota_row.id),
+        "full_name": anggota_row.full_name,
+        "no_kk":     anggota_row.no_kk,
+        "hubungan":  anggota_row.hubungan_dengan_kk,
+        "message":   f"{body.full_name} berhasil ditambahkan sebagai anggota KK",
+    }
+
+
+@router.delete("/warga/anggota/{anggota_id}", tags=["Warga"])
+async def delete_anggota_kk(
+    anggota_id:   UUID,
+    current_user: dict = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Kepala KK removes a family member they added."""
+    from sqlalchemy import select as sa_select
+    user_id = UUID(current_user["user_id"])
+
+    result = await db.execute(
+        sa_select(ResidentModel)
+        .where(
+            ResidentModel.id               == anggota_id,
+            ResidentModel.added_by_user_id == user_id,
+            ResidentModel.is_anggota_kk    == True,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404,
+            detail="Anggota tidak ditemukan atau bukan milik Anda")
+
+    await db.delete(row)
+    await db.commit()
+    return {"message": f"{row.full_name} berhasil dihapus dari daftar KK"}
+
 
 @router.get("/warga/{resident_id}", tags=["Warga"])
 async def get_resident(

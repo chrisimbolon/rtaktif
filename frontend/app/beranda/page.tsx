@@ -260,6 +260,13 @@ export default function BerandaPage() {
               href:    "/beranda/profil",
               soon:    false,
             },
+            {
+              icon:    "👨‍👩‍👧",
+              label:   "Anggota Keluarga",
+              desc:    "Kelola data anggota KK",
+              href:    rtGroupId ? "/beranda/keluarga" : null,
+              soon:    !rtGroupId,
+            },
           ].map((item) => (
             <div key={item.label}>
               {item.href ? (

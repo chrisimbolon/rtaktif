@@ -53,8 +53,10 @@ class PgResidentRepository(ResidentRepository):
             existing.kk_file_url     = entity.kk_file_url
             existing.ktp_file_url    = entity.ktp_file_url
             existing.member_count    = entity.member_count
-            existing.verified_at     = entity.verified_at
-            existing.verified_by     = entity.verified_by
+            existing.verified_at      = entity.verified_at
+            existing.verified_by      = entity.verified_by
+            existing.is_anggota_kk    = entity.is_anggota_kk
+            existing.added_by_user_id = entity.added_by_user_id
             # Rich profile fields
             existing.nik             = entity.nik
             existing.no_kk           = entity.no_kk
@@ -128,8 +130,10 @@ class PgResidentRepository(ResidentRepository):
             member_count   = row.member_count,
             kk_file_url    = row.kk_file_url,
             ktp_file_url   = row.ktp_file_url,
-            verified_at    = row.verified_at,
-            verified_by    = row.verified_by,
+            verified_at      = row.verified_at,
+            verified_by      = row.verified_by,
+            is_anggota_kk    = row.is_anggota_kk or False,
+            added_by_user_id = row.added_by_user_id,
             created_at     = row.created_at,
             updated_at     = row.updated_at,
             # Rich profile fields

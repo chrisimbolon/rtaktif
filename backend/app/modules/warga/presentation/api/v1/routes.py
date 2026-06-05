@@ -4,7 +4,8 @@ from uuid import UUID
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import EntityNotFoundError
-from app.modules.warga.application.schemas import AddAnggotaRequest, RegisterResidentRequest
+from app.modules.warga.application.schemas import (AddAnggotaRequest,
+                                                   RegisterResidentRequest)
 from app.modules.warga.application.use_cases.register_resident import \
     RegisterResident
 from app.modules.warga.application.use_cases.verify_resident import \
@@ -231,7 +232,8 @@ async def add_anggota_kk(
 ):
     """Warga (Kepala KK) adds a family member without a user account."""
     import uuid as _uuid
-    from datetime import date as _date, datetime, timezone
+    from datetime import date as _date
+    from datetime import datetime, timezone
 
     repo    = PgResidentRepository(db)
     user_id = UUID(current_user["user_id"])
@@ -331,34 +333,54 @@ async def delete_anggota_kk(
     return {"message": f"{row.full_name} berhasil dihapus dari daftar KK"}
 
 
-@router.get("/warga/{resident_id}", tags=["Warga"])
-async def get_resident(
-    resident_id: UUID,
+@router.get("/warga/export/{rt_group_id}", tags=["Warga"])
+async def export_warga_data(
+    rt_group_id:  UUID,
     current_user: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db:           AsyncSession = Depends(get_db),
 ):
-    resident = await PgResidentRepository(db).get_by_id(resident_id)
-    if not resident:
-        raise HTTPException(status_code=404, detail="Warga tidak ditemukan")
-    return {"id": str(resident.id), "full_name": resident.full_name,
-            "phone": resident.phone, "block_unit": resident.block_unit_display,
-            "status": resident.status, "kk_file_url": resident.kk_file_url,
-            "ktp_file_url": resident.ktp_file_url}
+    """Returns full resident data for Excel export."""
+    from sqlalchemy import select as sa_select
 
-
-@router.patch("/warga/{resident_id}/verify", tags=["Warga"])
-async def verify_resident(
-    resident_id: UUID,
-    current_user: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        resident = await VerifyResident(PgResidentRepository(db)).execute(
-            resident_id=resident_id, verified_by=UUID(current_user["user_id"])
+    result = await db.execute(
+        sa_select(ResidentModel)
+        .where(
+            ResidentModel.rt_group_id == rt_group_id,
+            ResidentModel.status      == "active",
         )
-        return {"id": str(resident.id), "status": resident.status}
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message)
+        .order_by(
+            ResidentModel.no_kk.nullslast(),
+            ResidentModel.kepala_keluarga.desc(),
+            ResidentModel.full_name,
+        )
+    )
+    residents = result.scalars().all()
+
+    return [
+        {
+            "id":                  str(r.id),
+            "full_name":           r.full_name,
+            "nik":                 r.nik,
+            "no_kk":               r.no_kk,
+            "tanggal_lahir":       r.tanggal_lahir.isoformat() if r.tanggal_lahir else None,
+            "tempat_lahir":        r.tempat_lahir,
+            "jenis_kelamin":       r.jenis_kelamin,
+            "agama":               r.agama,
+            "pekerjaan":           r.pekerjaan,
+            "status_kawin":        r.status_kawin,
+            "status_tinggal":      r.status_tinggal,
+            "hubungan_dengan_kk":  r.hubungan_dengan_kk,
+            "kepala_keluarga":     r.kepala_keluarga,
+            "pendidikan_terakhir": r.pendidikan_terakhir,
+            "kewarganegaraan":     r.kewarganegaraan or "WNI",
+            "alamat_ktp":          r.alamat_ktp,
+            "phone":               r.phone,
+            "block_unit":          f"Blok {r.block} No. {r.unit_number}" if r.block else None,
+            "is_anggota_kk":       r.is_anggota_kk,
+        }
+        for r in residents
+    ]
+
 
 @router.get("/warga/statistik/{rt_group_id}", tags=["Warga"])
 async def get_statistik_demografis(
@@ -367,6 +389,7 @@ async def get_statistik_demografis(
     db:           AsyncSession = Depends(get_db),
 ):
     from datetime import date
+
     from sqlalchemy import select as sa_select
 
     result = await db.execute(
@@ -428,3 +451,33 @@ async def get_statistik_demografis(
                             for k, v in usia_buckets.items() if v > 0],
         "kewarganegaraan": count_by("kewarganegaraan"),
     }
+
+
+@router.get("/warga/{resident_id}", tags=["Warga"])
+async def get_resident(
+    resident_id: UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    resident = await PgResidentRepository(db).get_by_id(resident_id)
+    if not resident:
+        raise HTTPException(status_code=404, detail="Warga tidak ditemukan")
+    return {"id": str(resident.id), "full_name": resident.full_name,
+            "phone": resident.phone, "block_unit": resident.block_unit_display,
+            "status": resident.status, "kk_file_url": resident.kk_file_url,
+            "ktp_file_url": resident.ktp_file_url}
+
+
+@router.patch("/warga/{resident_id}/verify", tags=["Warga"])
+async def verify_resident(
+    resident_id: UUID,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        resident = await VerifyResident(PgResidentRepository(db)).execute(
+            resident_id=resident_id, verified_by=UUID(current_user["user_id"])
+        )
+        return {"id": str(resident.id), "status": resident.status}
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message)

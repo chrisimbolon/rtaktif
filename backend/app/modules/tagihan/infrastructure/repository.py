@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tagihan.domain.entities import Invoice, Payment, InvoiceStatus, PaymentMethod
+from app.modules.tagihan.domain.entities import JenisIuran, Invoice, Payment, InvoiceStatus, PaymentMethod
 from app.modules.tagihan.domain.repositories import InvoiceRepository, PaymentRepository
 from app.modules.tagihan.infrastructure.models import InvoiceModel, PaymentModel
 
@@ -80,9 +80,11 @@ class PgInvoiceRepository(InvoiceRepository):
     async def save(self, entity: Invoice) -> Invoice:
         existing = await self.session.get(InvoiceModel, entity.id)
         if existing:
-            existing.status  = entity.status.value
-            existing.paid_at = entity.paid_at
-            existing.notes   = entity.notes
+            existing.status      = entity.status.value
+            existing.jenis_iuran = entity.jenis_iuran.value
+            existing.label_iuran = entity.label_iuran
+            existing.paid_at     = entity.paid_at
+            existing.notes       = entity.notes
         else:
             self.session.add(InvoiceModel(
                 id=entity.id,
@@ -92,6 +94,8 @@ class PgInvoiceRepository(InvoiceRepository):
                 period_month=entity.period_month,
                 amount_idr=entity.amount_idr,
                 status=entity.status.value,
+                jenis_iuran=entity.jenis_iuran.value,
+                label_iuran=entity.label_iuran,
                 paid_at=entity.paid_at,
                 notes=entity.notes,
                 created_at=entity.created_at,
@@ -143,6 +147,8 @@ class PgInvoiceRepository(InvoiceRepository):
             period_month=row.period_month,
             amount_idr=row.amount_idr,
             status=InvoiceStatus(row.status),
+            jenis_iuran=JenisIuran(row.jenis_iuran) if row.jenis_iuran else JenisIuran.KAS_RT,
+            label_iuran=row.label_iuran,
             paid_at=row.paid_at,
             notes=row.notes,
             created_at=row.created_at,

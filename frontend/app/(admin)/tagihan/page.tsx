@@ -381,6 +381,16 @@ function ConfirmModal({ invoice, residentName, onClose, onSuccess }: ConfirmModa
 
 // ── Generate Modal ─────────────────────────────────────────────────────────────
 
+const JENIS_IURAN_OPTIONS = [
+  { value: "IURAN KEBERSIHAN",      label: "Iuran Kebersihan"      },
+  { value: "IURAN KEAMANAN",        label: "Iuran Keamanan"        },
+  { value: "IURAN KAS RT",          label: "Iuran Kas RT"          },
+  { value: "IURAN SOSIAL",          label: "Iuran Sosial"          },
+  { value: "IURAN KEMATIAN",        label: "Iuran Kematian"        },
+  { value: "IURAN KEGIATAN KHUSUS", label: "Iuran Kegiatan Khusus" },
+  { value: "LAINNYA",               label: "Lainnya (isi sendiri)" },
+];
+
 function GenerateModal({
   rtGroupId, defaultAmount, onClose, onSuccess,
 }: {
@@ -390,11 +400,13 @@ function GenerateModal({
   const now      = new Date();
   const [year,   setYear]   = useState(now.getFullYear());
   const [month,  setMonth]  = useState(now.getMonth() + 1);
-  const [amount, setAmount] = useState(defaultAmount);
+  const [amount,      setAmount]      = useState(defaultAmount);
+  const [jenisIuran,  setJenisIuran]  = useState("IURAN KAS RT");
+  const [labelIuran,  setLabelIuran]  = useState("");
   const periods  = getPeriodOptions(6);
 
   const mutation = useMutation({
-    mutationFn: () => generateBulkInvoices(rtGroupId, year, month, amount),
+    mutationFn: () => generateBulkInvoices(rtGroupId, year, month, amount, jenisIuran, jenisIuran === "LAINNYA" ? labelIuran : undefined),
     onSuccess: (result) => {
       if (result.invoices_created === 0) {
         toast.info(`Semua warga sudah punya tagihan untuk ${periodLabel(year, month)}`);
@@ -457,6 +469,51 @@ function GenerateModal({
             />
             <p className="text-xs text-gray-500 mt-1">= {formatRupiah(amount)} per KK</p>
           </div>
+
+          {/* Jenis Iuran */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Jenis Iuran <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <select
+                value={jenisIuran}
+                onChange={e => { setJenisIuran(e.target.value); setLabelIuran(""); }}
+                className="w-full pl-4 pr-8 py-3 rounded-xl border border-gray-200
+                  bg-gray-50 text-sm text-gray-900 appearance-none
+                  focus:outline-none focus:ring-2 focus:ring-blue-100
+                  focus:border-blue-400 transition-all"
+              >
+                {JENIS_IURAN_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2
+                w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Custom label for LAINNYA */}
+          {jenisIuran === "LAINNYA" && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Nama Iuran <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={labelIuran}
+                onChange={e => setLabelIuran(e.target.value)}
+                placeholder="Contoh: Iuran 17 Agustus, Iuran Perbaikan Jalan..."
+                maxLength={100}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200
+                  bg-gray-50 text-sm placeholder:text-gray-400
+                  focus:outline-none focus:ring-2 focus:ring-blue-100
+                  focus:border-blue-400 transition-all"
+              />
+              <p className="text-xs text-gray-400 mt-1">{labelIuran.length}/100 karakter</p>
+            </div>
+          )}
+
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
             <p className="text-xs text-blue-700 leading-relaxed">
               Tagihan dibuat untuk semua warga dengan status aktif.
@@ -472,7 +529,7 @@ function GenerateModal({
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || !amount}
+            disabled={mutation.isPending || !amount || (jenisIuran === "LAINNYA" && labelIuran.trim().length < 3)}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5
               rounded-lg bg-blue-900 text-white text-sm font-semibold
               hover:bg-blue-800 disabled:opacity-50 transition-colors"

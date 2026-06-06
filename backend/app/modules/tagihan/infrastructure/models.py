@@ -43,6 +43,8 @@ class InvoiceModel(Base):
     period_month: Mapped[int]  = mapped_column(Integer, nullable=False)
     amount_idr:   Mapped[int]  = mapped_column(Integer, nullable=False)
     status:       Mapped[str]  = mapped_column(String(20), server_default="issued", nullable=False, index=True)
+    jenis_iuran:  Mapped[str]  = mapped_column(String(50),  server_default="IURAN KAS RT", nullable=False, index=True)
+    label_iuran:  Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Denormalised for fast reads (don't need JOIN to payments for basic status checks)
     paid_at:      Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     notes:        Mapped[str]  = mapped_column(Text, server_default="", nullable=False)

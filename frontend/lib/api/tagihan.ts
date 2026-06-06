@@ -82,10 +82,19 @@ export async function generateBulkInvoices(
   year:       number,
   month:      number,
   amountIdr:  number,
+  jenisIuran: string = "IURAN KAS RT",
+  labelIuran?: string,
 ): Promise<GenerateBulkResult> {
   const { data } = await apiClient.post<GenerateBulkResult>(
     "/tagihan/generate-bulk",
-    { rt_group_id: rtGroupId, year, month, amount_idr: amountIdr }
+    {
+      rt_group_id: rtGroupId,
+      year,
+      month,
+      amount_idr:  amountIdr,
+      jenis_iuran: jenisIuran,
+      label_iuran: labelIuran || undefined,
+    }
   );
   return data;
 }
@@ -208,8 +217,8 @@ export const tagihanApi = {
     getInvoicesByPeriod(rtGroupId, year, month),
 
   // Hook expects: tagihanApi.generateBulk({ rt_group_id, year, month, amount_idr })
-  generateBulk: (data: { rt_group_id: string; year: number; month: number; amount_idr: number }) =>
-    generateBulkInvoices(data.rt_group_id, data.year, data.month, data.amount_idr),
+  generateBulk: (data: { rt_group_id: string; year: number; month: number; amount_idr: number; jenis_iuran?: string; label_iuran?: string }) =>
+    generateBulkInvoices(data.rt_group_id, data.year, data.month, data.amount_idr, data.jenis_iuran, data.label_iuran),
 
   // Hook expects: tagihanApi.confirmPayment(id, { method, bukti_url })
   confirmPayment: (id: string, body: { method: string; bukti_url?: string }) =>

@@ -8,7 +8,9 @@ class GenerateBulkRequest(BaseModel):
     rt_group_id: UUID
     year: int
     month: int
-    amount_idr: int
+    amount_idr:  int
+    jenis_iuran: str = "IURAN KAS RT"
+    label_iuran: Optional[str] = None
 
 
 class ConfirmPaymentRequest(BaseModel):
@@ -20,6 +22,8 @@ class InvoiceResponse(BaseModel):
     id: UUID
     resident_id: UUID
     period_label: str
-    amount_idr: int
+    amount_idr:  int
+    jenis_iuran: str = "IURAN KAS RT"
+    label_iuran: Optional[str] = None
     status: str
-    bukti_url: Optional[str]
+    bukti_url: Optional[str]    

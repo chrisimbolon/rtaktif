@@ -31,6 +31,18 @@ class PaymentMethod(str, Enum):
     E_WALLET      = "e_wallet"
 
 
+class JenisIuran(str, Enum):
+    KEBERSIHAN      = "IURAN KEBERSIHAN"
+    KEAMANAN        = "IURAN KEAMANAN"
+    KAS_RT          = "IURAN KAS RT"
+    SOSIAL          = "IURAN SOSIAL"
+    KEMATIAN        = "IURAN KEMATIAN"
+    KEGIATAN_KHUSUS = "IURAN KEGIATAN KHUSUS"
+    LAINNYA         = "LAINNYA"
+
+
+
+
 @dataclass
 class Payment(BaseEntity):
     """
@@ -61,6 +73,8 @@ class Invoice(BaseEntity):
     period_year:  int                    = 0
     period_month: int                    = 0
     amount_idr:   int                    = 0
+    jenis_iuran:  JenisIuran             = JenisIuran.KAS_RT
+    label_iuran:  Optional[str]          = None
     status:       InvoiceStatus          = InvoiceStatus.ISSUED
     paid_at:      Optional[datetime]     = None   # set when confirmed
     notes:        str                    = ""
@@ -74,7 +88,9 @@ class Invoice(BaseEntity):
         rt_group_id: UUID,
         year: int,
         month: int,
-        amount_idr: int,
+        amount_idr:  int,
+        jenis_iuran: JenisIuran = JenisIuran.KAS_RT,
+        label_iuran: Optional[str] = None,
     ) -> "Invoice":
         inv = cls(
             resident_id=resident_id,
@@ -82,6 +98,8 @@ class Invoice(BaseEntity):
             period_year=year,
             period_month=month,
             amount_idr=amount_idr,
+            jenis_iuran=jenis_iuran,
+            label_iuran=label_iuran,
             status=InvoiceStatus.ISSUED,
         )
         inv.add_event(InvoiceGenerated(
@@ -147,6 +165,13 @@ class Invoice(BaseEntity):
         if self.status == InvoiceStatus.PAID:
             raise InvalidStateTransitionError("Tidak bisa batalkan tagihan yang sudah lunas")
         self.status = InvoiceStatus.CANCELLED
+
+    @property
+    def display_label(self) -> str:
+        """Human-readable label for this invoice type."""
+        if self.jenis_iuran == JenisIuran.LAINNYA and self.label_iuran:
+            return self.label_iuran
+        return self.jenis_iuran.value
 
     @property
     def is_paid(self) -> bool:

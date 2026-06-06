@@ -66,6 +66,8 @@ async def generate_bulk(
     ).execute(
         rt_group_id=body.rt_group_id, year=body.year, month=body.month,
         amount_idr=body.amount_idr, generated_by=UUID(current_user["user_id"]),
+        jenis_iuran=body.jenis_iuran,
+        label_iuran=body.label_iuran,
     )
     return {"invoices_created": len(invoices)}
 
@@ -107,6 +109,9 @@ async def get_invoices_by_period(
             "period":        f"{MONTHS_ID[inv.period_month]} {inv.period_year}",
             "amount_idr":    inv.amount_idr,
             "status":        inv.status,
+            "jenis_iuran":   inv.jenis_iuran.value,
+            "label_iuran":   inv.label_iuran,
+            "display_label": inv.display_label,
             "bukti_url":     inv.payment.bukti_url if inv.payment else None,
         }
         for inv in invoices

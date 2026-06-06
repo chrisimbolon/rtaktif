@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 
 const FEATURES = [
   { icon: "👥", bg: "bg-green-100",  title: "Data Warga",        desc: "Kelola profil warga lengkap dengan status verifikasi, nomor KK, dan riwayat. Admin memverifikasi setiap pendaftar baru." },
-  { icon: "💳", bg: "bg-blue-100",   title: "Tagihan & Iuran",   desc: "Generate tagihan bulanan otomatis untuk semua warga aktif. Konfirmasi pembayaran dengan satu klik dan pantau kas RT." },
+  { icon: "💳", bg: "bg-blue-100",   title: "Tagihan & Iuran",   desc: "Terbitkan tagihan bulanan otomatis untuk semua warga aktif. Konfirmasi pembayaran dengan satu klik dan pantau kas RT." },
   { icon: "📢", bg: "bg-yellow-100", title: "Pengumuman",        desc: "Broadcast informasi ke seluruh warga via aplikasi. Kategorikan sebagai info, mendesak, atau kegiatan dengan preview langsung." },
   { icon: "📋", bg: "bg-pink-100",   title: "Laporan Warga",     desc: "Warga bisa melaporkan masalah lingkungan langsung dari aplikasi. Admin menangani dan menyelesaikan setiap laporan." },
   { icon: "📊", bg: "bg-purple-100", title: "Dashboard Analitik",desc: "Lihat ringkasan RT Anda dalam satu layar — total warga, tingkat pembayaran, kas terkumpul, dan grafik 6 bulan." },
@@ -28,7 +28,7 @@ const STEPS = [
   { num: 1, title: "Daftar Gratis",    desc: "Buat akun dengan email. Konfirmasi selesai dalam hitungan detik." },
   { num: 2, title: "Setup RT Anda",    desc: "Masukkan nomor RT/RW, kelurahan, dan iuran bulanan di halaman Pengaturan." },
   { num: 3, title: "Ajak Warga",       desc: "Bagikan link daftar ke warga. Mereka mendaftar, Anda verifikasi." },
-  { num: 4, title: "Kelola Semuanya",  desc: "Generate tagihan, kirim pengumuman, dan pantau laporan dari satu dashboard." },
+  { num: 4, title: "Kelola Semuanya",  desc: "Terbitkan tagihan, kirim pengumuman, dan pantau laporan dari satu dashboard." },
 ];
 
 const PLANS = [

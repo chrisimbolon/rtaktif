@@ -413,7 +413,7 @@ function GenerateModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
         <div className="px-6 py-5 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900">Generate Tagihan Bulanan</h3>
+          <h3 className="font-bold text-gray-900">Terbitkan Tagihan Bulanan</h3>
           <p className="text-sm text-gray-500 mt-1">
             Buat tagihan untuk semua warga aktif sekaligus
           </p>

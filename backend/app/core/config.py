@@ -1,9 +1,10 @@
 # app/core/config.py — fix ALLOWED_ORIGINS parsing
 # Replace your current config.py with this
+import os
+from typing import List
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
-import os
 
 
 class Settings(BaseSettings):
@@ -64,6 +65,8 @@ class Settings(BaseSettings):
     DO_SPACES_BUCKET:   str = "rtmudah-media"
     DO_SPACES_REGION:   str = "sgp1"
     DO_SPACES_ENDPOINT: str = "https://sgp1.digitaloceanspaces.com"
+
+    GOOGLE_VISION_API_KEY: str = ""
 
     @property
     def is_production(self) -> bool:

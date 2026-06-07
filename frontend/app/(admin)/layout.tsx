@@ -12,13 +12,18 @@ import { useEffect } from "react";
 const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin", "ketua_rt", "superadmin"];
 
 const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
+  // ── Ketua RT pages ───────────────────────────────────────────────────────
   "/dashboard":               { title: "Dashboard",          subtitle: "Ringkasan RT Anda hari ini"              },
   "/warga":                   { title: "Data Warga",          subtitle: "Kelola data penduduk RT"                 },
   "/tagihan":                 { title: "Tagihan & Iuran",     subtitle: "Kelola pembayaran bulanan"               },
   "/pengumuman":              { title: "Pengumuman",          subtitle: "Broadcast informasi ke warga"            },
   "/laporan":                 { title: "Laporan Warga",       subtitle: "Keluhan & laporan dari warga"            },
+  "/laporan-keuangan":        { title: "Laporan Keuangan",    subtitle: "Rekap keuangan RT"                       },
+  "/statistik":               { title: "Statistik",           subtitle: "Data demografis warga"                   },
   "/pengaturan":              { title: "Pengaturan",          subtitle: "Konfigurasi RT Anda"                     },
-  "/superadmin/verifikasi":   { title: "Verifikasi Ketua RT", subtitle: "Tinjau & setujui pendaftaran Ketua RT"  },
+  // ── Superadmin pages ─────────────────────────────────────────────────────
+  "/superadmin/dashboard":    { title: "Platform Dashboard",  subtitle: "Ringkasan platform RTMudah"              },
+  "/superadmin/verifikasi":   { title: "Verifikasi Ketua RT", subtitle: "Tinjau & setujui pendaftaran Ketua RT"   },
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -26,12 +31,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router   = useRouter();
   const pathname = usePathname();
 
+  const role = (session?.user as any)?.role ?? "";
+  const isSuperadmin = role === "superadmin";
+
   // Match exact or prefix (e.g. /superadmin/verifikasi/123)
   const meta = Object.entries(PAGE_META).find(([key]) =>
     pathname === key || pathname.startsWith(key + "/")
   )?.[1] ?? { title: "RTMudah" };
 
-  // ── Auto-fetch + cache RT group in Zustand store ──────────────────
+  // ── RT group: only load for Ketua RT — superadmin has no RT context ──────
+  // Conditional hook call is not allowed in React, so useRTGroup runs always
+  // but it gates itself on rt_group_id existing in session — superadmin has
+  // no rt_group_id so it becomes a no-op naturally.
   useRTGroup();
 
   useEffect(() => {
@@ -42,15 +53,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return;
     }
 
-    const role    = (session.user as any)?.role   ?? "";
-    const uStatus = (session.user as any)?.status ?? "";
+    const userRole   = (session.user as any)?.role   ?? "";
+    const uStatus    = (session.user as any)?.status ?? "";
 
     if (uStatus === "suspended") { router.replace("/login?error=AccountSuspended"); return; }
     if (uStatus === "pending")   { router.replace("/login?error=AccountPending");   return; }
-    if (!ADMIN_ROLES.includes(role)) { router.replace("/beranda"); return; }
+    if (!ADMIN_ROLES.includes(userRole)) { router.replace("/beranda"); return; }
 
-    // Extra guard — non-superadmin trying to access /superadmin/* routes
-    if (pathname.startsWith("/superadmin") && role !== "superadmin") {
+    // ── Superadmin redirects ───────────────────────────────────────────────
+    if (userRole === "superadmin") {
+      // Superadmin hitting /dashboard → redirect to superadmin dashboard
+      // Prevents them seeing fung fang's RT data 😂
+      if (pathname === "/dashboard") {
+        router.replace("/superadmin/dashboard");
+        return;
+      }
+      // Superadmin trying to access Ketua RT-only pages → redirect to their dashboard
+      const ketuaRTOnlyPaths = [
+        "/warga", "/tagihan", "/pengumuman", "/laporan",
+        "/laporan-keuangan", "/statistik", "/pengaturan",
+      ];
+      if (ketuaRTOnlyPaths.some(p => pathname.startsWith(p))) {
+        router.replace("/superadmin/dashboard");
+        return;
+      }
+    }
+
+    // ── Non-superadmin trying to access superadmin pages ──────────────────
+    if (pathname.startsWith("/superadmin") && userRole !== "superadmin") {
       router.replace("/dashboard");
       return;
     }

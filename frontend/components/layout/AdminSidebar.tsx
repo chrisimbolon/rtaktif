@@ -5,12 +5,12 @@ import { cn } from "@/lib/utils";
 import { useRTStore } from "@/store/rt.store";
 import {
   BarChart3,
-  PieChart,
   ClipboardList,
   CreditCard,
   LayoutDashboard,
   LogOut,
   Megaphone,
+  PieChart,
   Settings,
   ShieldCheck,
   Users,
@@ -18,19 +18,22 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// ── Ketua RT nav — only shown to non-superadmin roles ──────────────────────
 const NAV = [
-  { label: "Dashboard",  href: "/dashboard",  icon: LayoutDashboard },
-  { label: "Data Warga", href: "/warga",       icon: Users           },
-  { label: "Tagihan",    href: "/tagihan",     icon: CreditCard      },
-  { label: "Pengumuman", href: "/pengumuman",  icon: Megaphone       },
-  { label: "Laporan",    href: "/laporan",     icon: ClipboardList   },
-  { label: "Keuangan",   href: "/laporan-keuangan", icon: BarChart3    },
-  { label: "Statistik",  href: "/statistik",        icon: PieChart     },
-  { label: "Pengaturan", href: "/pengaturan",  icon: Settings        },
+  { label: "Dashboard",  href: "/dashboard",        icon: LayoutDashboard },
+  { label: "Data Warga", href: "/warga",             icon: Users           },
+  { label: "Tagihan",    href: "/tagihan",           icon: CreditCard      },
+  { label: "Pengumuman", href: "/pengumuman",        icon: Megaphone       },
+  { label: "Laporan",    href: "/laporan",           icon: ClipboardList   },
+  { label: "Keuangan",   href: "/laporan-keuangan",  icon: BarChart3       },
+  { label: "Statistik",  href: "/statistik",         icon: PieChart        },
+  { label: "Pengaturan", href: "/pengaturan",        icon: Settings        },
 ];
 
+// ── Superadmin nav — only shown to superadmin role ─────────────────────────
 const SUPERADMIN_NAV = [
-  { label: "Verifikasi RT", href: "/superadmin/verifikasi", icon: ShieldCheck },
+  { label: "Dashboard",     href: "/superadmin/dashboard",   icon: LayoutDashboard },
+  { label: "Verifikasi RT", href: "/superadmin/verifikasi",  icon: ShieldCheck     },
 ];
 
 export function AdminSidebar() {
@@ -45,7 +48,7 @@ export function AdminSidebar() {
     .map((n: string) => n[0])
     .join("").toUpperCase();
 
-  const roleLabel = (role ?? "").replace("_", " ");
+  const roleLabel = isSuperadmin ? "Superadmin" : (role ?? "").replace("_", " ");
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -53,7 +56,7 @@ export function AdminSidebar() {
   return (
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
 
-      {/* Logo */}
+      {/* ── Logo / identity header ──────────────────────────────────────── */}
       <div className="px-5 py-6 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
@@ -62,33 +65,24 @@ export function AdminSidebar() {
           <div>
             <p className="font-bold text-white text-sm leading-none">RTMudah</p>
             <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[120px]">
-              {activeRT?.display_name ?? "Pilih RT di pengaturan"}
+              {isSuperadmin
+                ? "Platform Admin"
+                : (activeRT?.display_name ?? "Pilih RT di pengaturan")}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Main nav */}
+      {/* ── Navigation ─────────────────────────────────────────────────── */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {NAV.map(({ label, href, icon: Icon }) => (
-          <Link key={href} href={href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
-              isActive(href)
-                ? "bg-gray-700 text-white font-medium"
-                : "text-gray-400 hover:bg-gray-800 hover:text-white"
-            )}>
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            <span>{label}</span>
-          </Link>
-        ))}
-
-        {/* Superadmin section — only visible to superadmin */}
-        {isSuperadmin && (
+        {isSuperadmin ? (
+          // Superadmin: only platform-level nav
+          // Ketua RT tools (Warga/Tagihan/etc) are hidden —
+          // they're scoped to a single RT and meaningless for superadmin
           <>
-            <div className="pt-3 pb-1 px-3">
+            <div className="pb-1 px-3">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                Superadmin
+                Platform
               </p>
             </div>
             {SUPERADMIN_NAV.map(({ label, href, icon: Icon }) => (
@@ -104,10 +98,24 @@ export function AdminSidebar() {
               </Link>
             ))}
           </>
+        ) : (
+          // Ketua RT: full RT management nav
+          NAV.map(({ label, href, icon: Icon }) => (
+            <Link key={href} href={href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
+                isActive(href)
+                  ? "bg-gray-700 text-white font-medium"
+                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
+              )}>
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span>{label}</span>
+            </Link>
+          ))
         )}
       </nav>
 
-      {/* User footer */}
+      {/* ── User footer ────────────────────────────────────────────────── */}
       <div className="px-3 pb-4 border-t border-gray-800 pt-3">
         <div className="flex items-center gap-3 px-3 py-2.5">
           <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center

@@ -56,7 +56,7 @@ from app.modules.iam.infrastructure.repository import (PgRTGroupRepository,
                                                        PgUserRepository)
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
                      status)
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -376,6 +376,78 @@ async def list_pending_verification(
         for rt, user in rows
     ]
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /onboarding/platform-stats
+# Superadmin only — platform-wide health numbers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/platform-stats",
+    summary="Platform-wide stats (superadmin only)",
+)
+async def get_platform_stats(
+    _current_user = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Returns platform-wide counts for the superadmin dashboard.
+    All queries are direct COUNT aggregates — fast, no ORM overhead.
+    """
+    from app.modules.warga.infrastructure.models import ResidentModel
+    from sqlalchemy import func
+
+    # RT group counts by verification_status
+    rt_counts_result = await db.execute(
+        select(RTGroupModel.verification_status, func.count().label("cnt"))
+        .group_by(RTGroupModel.verification_status)
+    )
+    rt_counts = dict(rt_counts_result.fetchall())
+
+    # Total users (all roles)
+    total_users = await db.scalar(
+        select(func.count()).select_from(UserModel)
+    )
+
+    # Total warga (residents across all RTs)
+    total_warga = await db.scalar(
+        select(func.count()).select_from(ResidentModel)
+    )
+
+    # Recent signups — last 5 RT groups regardless of status
+    recent_result = await db.execute(
+        select(RTGroupModel, UserModel)
+        .join(UserModel, RTGroupModel.admin_user_id == UserModel.id)
+        .order_by(RTGroupModel.created_at.desc())
+        .limit(5)
+    )
+    recent_rows = recent_result.fetchall()
+
+    recent_rts = [
+        {
+            "id":                  str(rt.id),
+            "rt_identity":         (
+                f"RT {rt.rt_number}/RW {rt.rw_number}, "
+                f"Kel. {rt.kelurahan}, {rt.kota}"
+            ),
+            "admin_name":          user.full_name,
+            "verification_status": rt.verification_status,
+            "created_at":          rt.created_at.isoformat(),
+        }
+        for rt, user in recent_rows
+    ]
+
+    return {
+        "rt_groups": {
+            "total":    sum(rt_counts.values()),
+            "active":   rt_counts.get("active", 0),
+            "pending":  rt_counts.get("pending_verification", 0),
+            "rejected": rt_counts.get("rejected", 0),
+            "expired":  rt_counts.get("expired", 0),
+        },
+        "total_users":  total_users  or 0,
+        "total_warga":  total_warga  or 0,
+        "recent_rts":   recent_rts,
+    }
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST /onboarding/rt-groups/{rt_group_id}/verify

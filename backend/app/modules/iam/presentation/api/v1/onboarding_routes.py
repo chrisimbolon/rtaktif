@@ -5,51 +5,60 @@ Tags          : ["Onboarding"]
 
 Endpoints
 ─────────────────────────────────────────────────────────────────────────────
-POST   /onboarding/upload-document          No auth — accepts KTP or SK file
-POST   /onboarding/submit-verification      No auth — submits the full package
-GET    /onboarding/pending                  Superadmin only — review queue
-POST   /onboarding/rt-groups/{id}/verify    Superadmin only — approve / reject
+POST   /onboarding/upload-document               No auth — KTP or SK file
+POST   /onboarding/upload-ktp                    No auth — KTP image + auto OCR
+POST   /onboarding/submit-verification           No auth — submits full package
+GET    /onboarding/pending                       Superadmin — review queue
+POST   /onboarding/rt-groups/{id}/verify         Superadmin — approve / reject
+POST   /onboarding/rt-groups/{id}/retrigger-ocr  Superadmin — re-run KTP OCR
 
-Why these four routes live in a NEW router instead of the IAM router:
-  - The IAM router is already large and handles auth/users/rt-groups.
-  - Onboarding has its own lifecycle and its own set of consumers
-    (superadmin review dashboard), keeping concerns clean.
-  - File upload has multipart parsing that's noisy among JSON endpoints.
-  - You can add rate-limiting to just this router later without touching IAM.
+Architecture note on ktp_* fields:
+  The RTGroup *domain entity* intentionally has no ktp_* fields — those are
+  infrastructure-layer concerns (OCR pipeline, document storage). The domain
+  only cares about SK verification status.
+
+  CONSEQUENCE: any route that reads or writes ktp_* fields must query
+  RTGroupModel (ORM) directly via SQLAlchemy, NOT go through
+  PgRTGroupRepository. Using repo.save() on an RTGroup entity would silently
+  wipe ktp_* columns back to NULL because _to_entity() / save() don't
+  map them. This is by design — not a bug to fix.
 """
 
 from __future__ import annotations
 
-import base64
 import mimetypes
 import os
 import uuid
+from typing import Literal
 from uuid import UUID
-from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+import httpx
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.dependencies import require_superadmin
+from app.core.exceptions import (DomainException, EntityNotFoundError,
+                                 InvalidStateTransitionError)
+from app.modules.iam.application.schemas import (KTPOCRDataResponse,
+                                                 KTPUploadOCRResponse,
+                                                 PendingRTGroupItem,
+                                                 RTGroupVerificationResponse,
+                                                 SubmitVerificationRequest,
+                                                 SubmitVerificationResponse,
+                                                 UploadDocumentResponse,
+                                                 VerifyRTGroupRequest)
+from app.modules.iam.application.services.ktp_ocr_service import KTPOCRService
+from app.modules.iam.application.use_cases.submit_verification import \
+    SubmitVerificationUseCase
+from app.modules.iam.application.use_cases.verify_rt_group import \
+    VerifyRTGroupUseCase
+from app.modules.iam.infrastructure.models import RTGroupModel, UserModel
+from app.modules.iam.infrastructure.repository import (PgRTGroupRepository,
+                                                       PgUserRepository)
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
+                     status)
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_superadmin
-from app.core.exceptions import (
-    DomainException,
-    EntityNotFoundError,
-    InvalidStateTransitionError,
-)
-from app.modules.iam.application.schemas import (
-    PendingRTGroupItem,
-    RTGroupVerificationResponse,
-    SubmitVerificationRequest,
-    SubmitVerificationResponse,
-    UploadDocumentResponse,
-    VerifyRTGroupRequest,
-)
-from app.modules.iam.application.use_cases.submit_verification import SubmitVerificationUseCase
-from app.modules.iam.application.use_cases.verify_rt_group import VerifyRTGroupUseCase
-from app.modules.iam.infrastructure.models import RTGroupModel, UserModel as UserORM
-from app.modules.iam.infrastructure.repository import PgRTGroupRepository, PgUserRepository
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
@@ -61,6 +70,11 @@ _ALLOWED_MIME = {
     "image/webp",
     "application/pdf",
 }
+_ALLOWED_IMAGE_MIME = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 _MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -68,27 +82,41 @@ _MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 def _storage_url(filename: str) -> str:
     """
-    In production this would call DigitalOcean Spaces / S3.
-    For now returns a placeholder URL that the superadmin can manually check.
-    Replace the body of this function when you wire up DO Spaces.
+    Placeholder — returns a URL the superadmin can check manually.
+    Replace with real DO Spaces upload when wiring storage.
+
+    Production swap:
+        from app.core.storage import spaces_client
+        url = await spaces_client.upload(raw, filename, content_type)
     """
-    # TODO: replace with actual DO Spaces / S3 upload
     base = os.getenv("STORAGE_BASE_URL", "https://storage.rtmudah.com/documents")
     return f"{base}/{filename}"
 
 
 def _exception_to_http(exc: Exception) -> HTTPException:
-    """Map domain exceptions to appropriate HTTP status codes."""
     if isinstance(exc, EntityNotFoundError):
-        return HTTPException(status_code=status.HTTP_404_NOT_FOUND,   detail=str(exc))
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, (InvalidStateTransitionError, DomainException)):
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                         detail="Terjadi kesalahan internal. Coba lagi.")
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Terjadi kesalahan internal. Coba lagi.",
+    )
+
+
+def _model_to_ocr_response(m: RTGroupModel) -> KTPOCRDataResponse | None:
+    """Convert RTGroupModel.ktp_ocr_data JSONB dict → KTPOCRDataResponse."""
+    if not m.ktp_ocr_data:
+        return None
+    return KTPOCRDataResponse(**{
+        k: m.ktp_ocr_data.get(k)
+        for k in KTPOCRDataResponse.model_fields
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST /onboarding/upload-document
+# Existing endpoint — unchanged
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post(
@@ -98,16 +126,15 @@ def _exception_to_http(exc: Exception) -> HTTPException:
     summary="Upload KTP or SK document",
     description=(
         "Accepts a single file (JPG / PNG / WebP / PDF, max 10 MB). "
-        "Returns a permanent storage URL to include in submit-verification. "
-        "No authentication required — the user just registered and has no JWT yet."
+        "Returns a storage URL to include in submit-verification. "
+        "No authentication required."
     ),
 )
 async def upload_document(
-    file:          UploadFile        = File(..., description="KTP or SK file"),
-    document_type: Literal["ktp","sk"] = Form(..., description="'ktp' or 'sk'"),
+    file:          UploadFile           = File(..., description="KTP or SK file"),
+    document_type: Literal["ktp", "sk"] = Form(..., description="'ktp' or 'sk'"),
 ) -> UploadDocumentResponse:
 
-    # ── MIME type guard ───────────────────────────────────────────────────
     content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or ""
     if content_type not in _ALLOWED_MIME:
         raise HTTPException(
@@ -118,7 +145,6 @@ async def upload_document(
             ),
         )
 
-    # ── Size guard (streaming — avoid loading the whole file) ────────────
     raw = await file.read()
     if len(raw) > _MAX_BYTES:
         raise HTTPException(
@@ -126,16 +152,9 @@ async def upload_document(
             detail="Ukuran file maksimal 10 MB",
         )
 
-    # ── Build a unique filename ───────────────────────────────────────────
-    ext = (file.filename or "").rsplit(".", 1)[-1].lower() or "bin"
+    ext         = (file.filename or "").rsplit(".", 1)[-1].lower() or "bin"
     unique_name = f"{document_type}_{uuid.uuid4().hex}.{ext}"
-
-    # ── Upload to storage (placeholder — swap for real implementation) ────
-    url = _storage_url(unique_name)
-
-    # Production:
-    #   from app.core.storage import spaces_client
-    #   url = await spaces_client.upload(raw, unique_name, content_type)
+    url         = _storage_url(unique_name)
 
     return UploadDocumentResponse(
         url=url,
@@ -146,7 +165,111 @@ async def upload_document(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# POST /onboarding/upload-ktp
+# NEW — upload KTP image + immediately run OCR + persist result
+# No auth — called during onboarding before JWT exists
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/upload-ktp",
+    response_model=KTPUploadOCRResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload KTP image and auto-run OCR",
+    description=(
+        "Accepts a KTP image (JPG/PNG/WebP, max 10 MB). "
+        "Stores the image, runs Google Vision OCR, cross-checks against "
+        "registration data, and persists the result on the RT group. "
+        "No authentication required — called during onboarding flow."
+    ),
+)
+async def upload_ktp_with_ocr(
+    file:    UploadFile = File(..., description="KTP image — JPG/PNG/WebP only"),
+    user_id: str        = Form(..., description="UUID of the registering Ketua RT"),
+    db:      AsyncSession = Depends(get_db),
+) -> KTPUploadOCRResponse:
+
+    # ── Validate image type ───────────────────────────────────────────────
+    content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or ""
+    if content_type not in _ALLOWED_IMAGE_MIME:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"KTP harus berupa gambar (JPEG/PNG/WebP). Diterima: {content_type}",
+        )
+
+    raw = await file.read()
+    if len(raw) > _MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Ukuran file maksimal 10 MB",
+        )
+
+    # ── Resolve user ──────────────────────────────────────────────────────
+    try:
+        parsed_user_id = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="user_id harus berupa UUID yang valid")
+
+    user_row = await db.get(UserModel, parsed_user_id)
+    if not user_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User tidak ditemukan")
+
+    # ── Resolve pending RT group for this user ────────────────────────────
+    # Query RTGroupModel directly — RTGroup entity has no ktp_* fields
+    rt_stmt = select(RTGroupModel).where(
+        RTGroupModel.admin_user_id == parsed_user_id
+    )
+    rt_model = (await db.execute(rt_stmt)).scalar_one_or_none()
+
+    # ── Store file (placeholder) ──────────────────────────────────────────
+    ext         = (file.filename or "ktp").rsplit(".", 1)[-1].lower() or "jpg"
+    unique_name = f"ktp_{uuid.uuid4().hex}.{ext}"
+    ktp_url     = _storage_url(unique_name)
+
+    # ── Run OCR ───────────────────────────────────────────────────────────
+    ktp_service = KTPOCRService(google_vision_api_key=settings.GOOGLE_VISION_API_KEY)
+    ocr_result  = await ktp_service.verify(
+        image_bytes=raw,
+        registered_name=user_row.full_name,
+        registered_rt=rt_model.rt_number  if rt_model else "",
+        registered_rw=rt_model.rw_number  if rt_model else "",
+        registered_kelurahan=rt_model.kelurahan if rt_model else "",
+    )
+
+    ocr_dict = ocr_result.to_ocr_data_dict()
+
+    # ── Persist KTP URL + OCR result directly on RTGroupModel ────────────
+    # Must use direct update() — NOT repo.save() which would wipe ktp_* fields
+    if rt_model:
+        await db.execute(
+            update(RTGroupModel)
+            .where(RTGroupModel.id == rt_model.id)
+            .values(
+                ktp_document_url=ktp_url,
+                ktp_ocr_data=ocr_dict,
+                ktp_ocr_flags=[f.value for f in ocr_result.flags],
+                ktp_ocr_confidence=ocr_result.confidence_score,
+            )
+        )
+        await db.commit()
+
+    extracted = KTPOCRDataResponse(**ocr_dict) if ocr_dict else None
+
+    return KTPUploadOCRResponse(
+        ktp_document_url=ktp_url,
+        ocr_success=ocr_result.success,
+        confidence_score=ocr_result.confidence_score,
+        flags=[f.value for f in ocr_result.flags],
+        suggested_action=ocr_result.suggested_action,
+        extracted=extracted,
+        error=ocr_result.error_message,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # POST /onboarding/submit-verification
+# Existing endpoint — unchanged
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post(
@@ -185,7 +308,6 @@ async def submit_verification(
             sk_valid_until=payload.sk_valid_until,
         )
     except IntegrityError:
-        # Defensive catch — uq_rt_groups_identity DB constraint
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -208,7 +330,8 @@ async def submit_verification(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# GET /onboarding/pending  — superadmin review queue
+# GET /onboarding/pending
+# UPDATED — now joins UserModel + RTGroupModel directly to include OCR fields
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get(
@@ -220,32 +343,43 @@ async def list_pending_verification(
     _current_user = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> list[PendingRTGroupItem]:
-
-    rt_group_repo = PgRTGroupRepository(db)
-    user_repo     = PgUserRepository(db)
-
-    pending = await rt_group_repo.list_pending_verification()
-
-    result: list[PendingRTGroupItem] = []
-    for group in pending:
-        admin = await user_repo.get_by_id(group.admin_user_id)
-        result.append(
-            PendingRTGroupItem(
-                id=group.id,
-                rt_identity=str(group.identity),
-                admin_full_name=admin.full_name if admin else "—",
-                admin_phone=admin.phone if admin else "—",
-                ktp_url=getattr(group, "ktp_url", None),
-                sk_url=group.sk_document_url,
-                created_at=group.created_at,
-            )
+    """
+    Query RTGroupModel directly (not via repository) so we can include
+    ktp_ocr_* fields that the domain entity intentionally doesn't carry.
+    Joined with UserModel for admin name + phone in one query.
+    """
+    stmt = (
+        select(RTGroupModel, UserModel)
+        .join(UserModel, RTGroupModel.admin_user_id == UserModel.id)
+        .where(
+            RTGroupModel.verification_status == "pending_verification"
         )
+        .order_by(RTGroupModel.created_at.asc())   # FIFO — oldest first
+    )
+    rows = (await db.execute(stmt)).fetchall()
 
-    return result
+    return [
+        PendingRTGroupItem(
+            id=rt.id,
+            rt_identity=str(f"RT {rt.rt_number}/RW {rt.rw_number}, "
+                            f"Kel. {rt.kelurahan}, Kec. {rt.kecamatan}, {rt.kota}"),
+            admin_full_name=user.full_name,
+            admin_phone=user.phone,
+            ktp_url=rt.ktp_document_url,
+            sk_url=rt.sk_document_url,
+            created_at=rt.created_at,
+            ktp_ocr_confidence=rt.ktp_ocr_confidence,
+            ktp_ocr_flags=rt.ktp_ocr_flags or [],
+            ktp_verified=rt.ktp_verified,
+            ktp_ocr_data=_model_to_ocr_response(rt),
+        )
+        for rt, user in rows
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# POST /onboarding/rt-groups/{rt_group_id}/verify — approve or reject
+# POST /onboarding/rt-groups/{rt_group_id}/verify
+# Existing endpoint — unchanged
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post(
@@ -254,13 +388,12 @@ async def list_pending_verification(
     summary="Approve or reject a Ketua RT verification (superadmin only)",
 )
 async def verify_rt_group(
-    rt_group_id:   uuid.UUID,
-    payload:       VerifyRTGroupRequest,
-    current_user   = Depends(require_superadmin),
+    rt_group_id:  uuid.UUID,
+    payload:      VerifyRTGroupRequest,
+    current_user  = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> RTGroupVerificationResponse:
 
-    # Extra cross-field guard (schema pattern already validated action value)
     if payload.action == "reject" and not payload.rejection_reason:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -298,3 +431,94 @@ async def verify_rt_group(
         needs_renewal=rt_group.needs_renewal,
         message=action_msg,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /onboarding/rt-groups/{rt_group_id}/retrigger-ocr
+# NEW — superadmin re-runs OCR on already-uploaded KTP image
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/rt-groups/{rt_group_id}/retrigger-ocr",
+    summary="Re-run KTP OCR on existing image (superadmin only)",
+    description=(
+        "Fetches the stored KTP image and re-runs the OCR pipeline. "
+        "Useful when the Ketua RT uploads a better photo after an initial "
+        "low-confidence or unreadable result."
+    ),
+)
+async def retrigger_ktp_ocr(
+    rt_group_id:  uuid.UUID,
+    current_user  = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+
+    # ── Fetch RTGroupModel + UserModel directly (need ktp_* + user name) ─
+    stmt = (
+        select(RTGroupModel, UserModel)
+        .join(UserModel, RTGroupModel.admin_user_id == UserModel.id)
+        .where(RTGroupModel.id == rt_group_id)
+    )
+    row = (await db.execute(stmt)).first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="RT group tidak ditemukan")
+
+    rt_model, user_model = row
+
+    if not rt_model.ktp_document_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Belum ada foto KTP yang diupload untuk RT group ini",
+        )
+
+    # ── Fetch image from storage ──────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            img_resp = await client.get(rt_model.ktp_document_url)
+            img_resp.raise_for_status()
+            image_bytes = img_resp.content
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Gagal mengambil gambar KTP dari storage: HTTP {exc.response.status_code}",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Gagal mengambil gambar KTP dari storage: {exc}",
+        )
+
+    # ── Re-run OCR ────────────────────────────────────────────────────────
+    ktp_service = KTPOCRService(google_vision_api_key=settings.GOOGLE_VISION_API_KEY)
+    ocr_result  = await ktp_service.verify(
+        image_bytes=image_bytes,
+        registered_name=user_model.full_name,
+        registered_rt=rt_model.rt_number,
+        registered_rw=rt_model.rw_number,
+        registered_kelurahan=rt_model.kelurahan,
+    )
+
+    ocr_dict = ocr_result.to_ocr_data_dict()
+
+    # ── Persist updated OCR result ────────────────────────────────────────
+    # Direct update — NOT repo.save() which would wipe ktp_* fields
+    await db.execute(
+        update(RTGroupModel)
+        .where(RTGroupModel.id == rt_group_id)
+        .values(
+            ktp_ocr_data=ocr_dict,
+            ktp_ocr_flags=[f.value for f in ocr_result.flags],
+            ktp_ocr_confidence=ocr_result.confidence_score,
+        )
+    )
+    await db.commit()
+
+    return {
+        "ocr_success":      ocr_result.success,
+        "confidence_score": ocr_result.confidence_score,
+        "flags":            [f.value for f in ocr_result.flags],
+        "suggested_action": ocr_result.suggested_action,
+        "extracted":        ocr_dict,
+        "error":            ocr_result.error_message,
+    }

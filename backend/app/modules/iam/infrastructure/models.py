@@ -12,9 +12,9 @@ from datetime import datetime
 import sqlalchemy as sa
 from app.core.database import Base, TZDateTime
 from app.modules.iam.domain.entities import RTVerificationStatus
-from sqlalchemy import (Boolean, Date, Enum, ForeignKey, Index, Integer,
+from sqlalchemy import (Boolean, Date, Enum, Float, ForeignKey, Index, Integer,
                         String, Text, UniqueConstraint)
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -109,6 +109,18 @@ class RTGroupModel(Base):
         nullable=True,
     )
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ktp_document_url:   Mapped[str | None]  = mapped_column(Text,    nullable=True)
+    ktp_ocr_data:       Mapped[dict | None] = mapped_column(JSONB,   nullable=True)
+    ktp_ocr_flags:      Mapped[list | None] = mapped_column(ARRAY(String), nullable=True, server_default="{}")
+    ktp_ocr_confidence: Mapped[float | None] = mapped_column(Float,  nullable=True)
+    ktp_verified:       Mapped[bool]         = mapped_column(Boolean, nullable=False, server_default="false")
+    ktp_verified_at:    Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+    ktp_verified_by:    Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_rt_groups_ktp_verified_by"),
+        nullable=True,
+    )
+    sk_notes:           Mapped[str | None]  = mapped_column(Text,    nullable=True)
 
     # ── Timestamps ────────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(

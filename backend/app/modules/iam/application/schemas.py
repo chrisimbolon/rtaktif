@@ -155,6 +155,30 @@ class VerifyRTGroupRequest(BaseModel):
         #  model_validator would work here too but keeping it simple)
         return v
 
+class KTPOCRDataResponse(BaseModel):
+    nik:           Optional[str] = None
+    nama:          Optional[str] = None
+    tempat_lahir:  Optional[str] = None
+    tanggal_lahir: Optional[str] = None
+    jenis_kelamin: Optional[str] = None
+    alamat:        Optional[str] = None
+    rt_rw:         Optional[str] = None
+    kelurahan:     Optional[str] = None
+    kecamatan:     Optional[str] = None
+    kota:          Optional[str] = None
+    provinsi:      Optional[str] = None
+    agama:         Optional[str] = None
+    masa_berlaku:  Optional[str] = None
+
+
+class KTPUploadOCRResponse(BaseModel):
+    ktp_document_url: str
+    ocr_success:      bool
+    confidence_score: float
+    flags:            list[str]
+    suggested_action: str
+    extracted:        Optional[KTPOCRDataResponse]
+    error:            Optional[str]
 
 class RTGroupVerificationResponse(BaseModel):
     id:                  UUID
@@ -169,15 +193,17 @@ class RTGroupVerificationResponse(BaseModel):
 
 
 class PendingRTGroupItem(BaseModel):
-    """Single item in the superadmin review queue."""
-    id:                UUID
-    rt_identity:       str
-    admin_full_name:   str
-    admin_phone:       str
-    ktp_url:           Optional[str]
-    sk_url:            Optional[str]
-    created_at:        datetime
-
+    id:                  UUID
+    rt_identity:         str
+    admin_full_name:     str
+    admin_phone:         str
+    ktp_url:             Optional[str]
+    sk_url:              Optional[str]
+    created_at:          datetime
+    ktp_ocr_confidence:  Optional[float]    = None
+    ktp_ocr_flags:       list[str]          = []
+    ktp_verified:        bool               = False
+    ktp_ocr_data:        Optional[KTPOCRDataResponse] = None
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RT Group (general)

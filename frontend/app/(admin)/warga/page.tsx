@@ -1,29 +1,43 @@
 "use client";
 // app/(admin)/warga/page.tsx
-// Updated: clickable warga rows → KK detail modal
-// Shows full profile + all KK members when available
+// UPDATED: KKDetailModal now has 3 tabs — Data, Edit, Riwayat Perubahan
+// Ketua RT can edit any warga profile field with full audit trail.
 
 import {
+  AGAMA_OPTIONS,
   formatDate,
+  getResidentChangeLog,
   getWargaFullProfile,
   getWargaList,
+  HUBUNGAN_KK_OPTIONS,
+  JENIS_KELAMIN_OPTIONS,
+  KEWARGANEGARAAN_OPTIONS,
+  PEKERJAAN_OPTIONS,
+  PENDIDIKAN_OPTIONS,
+  STATUS_KAWIN_OPTIONS,
+  STATUS_KELUARGA_OPTIONS,
+  STATUS_TINGGAL_OPTIONS,
   suspendWarga,
+  updateResidentProfile,
   verifyWarga,
+  type AdminUpdateResidentPayload,
+  type ChangeLogEntry,
   type ResidentDetail,
   type WargaFilter,
   type WargaUser,
 } from "@/lib/api/warga";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckCircle, ChevronRight, Clock,
-  Home, Loader2, RefreshCw, Search,
-  UserCheck, Users, X, XCircle
+  CheckCircle, ChevronRight, Clock, Edit3,
+  History, Home, Loader2, RefreshCw, Save,
+  Search, UserCheck, Users, X, XCircle,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 const FILTERS: { key: WargaFilter; label: string; icon: React.ReactNode }[] = [
   { key: "all",       label: "Semua",     icon: <Users       className="w-3.5 h-3.5" /> },
@@ -32,7 +46,9 @@ const FILTERS: { key: WargaFilter; label: string; icon: React.ReactNode }[] = [
   { key: "suspended", label: "Disuspend", icon: <XCircle     className="w-3.5 h-3.5" /> },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+type ModalTab = "data" | "edit" | "log";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: WargaUser["status"] }) {
   const cfg = {
@@ -40,11 +56,9 @@ function StatusBadge({ status }: { status: WargaUser["status"] }) {
     pending:   "bg-amber-100 text-amber-800",
     suspended: "bg-red-100   text-red-700",
   }[status] ?? "bg-gray-100 text-gray-500";
-
   const label = { active: "Aktif", pending: "Pending", suspended: "Disuspend" }[status] ?? status;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full
-      text-xs font-semibold ${cfg}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${cfg}`}>
       {label}
     </span>
   );
@@ -53,12 +67,10 @@ function StatusBadge({ status }: { status: WargaUser["status"] }) {
 function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
   const s        = name || "W";
   const initials = s.split(" ").slice(0, 2).map((n: string) => n[0]).join("").toUpperCase();
-  const colors   = ["bg-blue-500","bg-green-500","bg-purple-500",
-                    "bg-orange-500","bg-pink-500","bg-teal-500"];
+  const colors   = ["bg-blue-500","bg-green-500","bg-purple-500","bg-orange-500","bg-pink-500","bg-teal-500"];
   const sz       = size === "sm" ? "w-7 h-7 text-xs" : "w-9 h-9 text-sm";
   return (
-    <div className={`${sz} rounded-full ${colors[s.charCodeAt(0) % colors.length]}
-      flex items-center justify-center text-white font-bold flex-shrink-0`}>
+    <div className={`${sz} rounded-full ${colors[s.charCodeAt(0) % colors.length]} flex items-center justify-center text-white font-bold flex-shrink-0`}>
       {initials}
     </div>
   );
@@ -74,31 +86,174 @@ function DataRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-// ── KK Member Card ────────────────────────────────────────────────────────────
+// ─── Edit form field components (elderly-friendly: large, clear) ──────────────
 
-function KKMemberCard({
-  member, isMain = false,
+function EditField({
+  label, name, value, onChange, type = "text", options,
 }: {
-  member: ResidentDetail; isMain?: boolean;
+  label:    string;
+  name:     string;
+  value:    string | boolean | null | undefined;
+  onChange: (name: string, value: string | boolean) => void;
+  type?:    "text" | "select" | "textarea" | "date" | "toggle";
+  options?: readonly string[];
 }) {
-  const [expanded, setExpanded] = useState(isMain);
+  const baseInput = "w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all";
+
+  if (type === "toggle") {
+    return (
+      <div className="flex items-center justify-between py-2">
+        <label className="text-sm font-medium text-gray-700">{label}</label>
+        <button
+          type="button"
+          onClick={() => onChange(name, !(value as boolean))}
+          className={cn(
+            "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+            value ? "bg-blue-600" : "bg-gray-200"
+          )}
+        >
+          <span className={cn(
+            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+            value ? "translate-x-6" : "translate-x-1"
+          )} />
+        </button>
+      </div>
+    );
+  }
+
+  if (type === "select" && options) {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+        <select
+          value={(value as string) ?? ""}
+          onChange={(e) => onChange(name, e.target.value)}
+          className={baseInput}
+        >
+          <option value="">— Pilih —</option>
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+    );
+  }
+
+  if (type === "textarea") {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+        <textarea
+          value={(value as string) ?? ""}
+          onChange={(e) => onChange(name, e.target.value)}
+          rows={3}
+          className={cn(baseInput, "resize-none")}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className={`rounded-xl border ${
-      isMain ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white"
-    } overflow-hidden`}>
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+      <input
+        type={type}
+        value={(value as string) ?? ""}
+        onChange={(e) => onChange(name, e.target.value)}
+        className={baseInput}
+      />
+    </div>
+  );
+}
+
+// ─── Change log tab ───────────────────────────────────────────────────────────
+
+function ChangeLogTab({ residentId }: { residentId: string }) {
+  const { data: logs = [], isLoading } = useQuery<ChangeLogEntry[]>({
+    queryKey: ["change-log", residentId],
+    queryFn:  () => getResidentChangeLog(residentId),
+    staleTime: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="py-12 flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <History className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+        <p className="text-sm font-medium text-gray-600">Belum ada riwayat perubahan</p>
+        <p className="text-xs text-gray-400 mt-1">Perubahan data akan muncul di sini</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {logs.map((log) => {
+        const date = new Date(log.changed_at).toLocaleDateString("id-ID", {
+          day: "numeric", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+        });
+        const roleLabel = log.changed_by_role === "ketua_rt" ? "Ketua RT" :
+                          log.changed_by_role === "superadmin" ? "Superadmin" : "Warga";
+        return (
+          <div key={log.id}
+            className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <span className="text-xs font-semibold text-gray-800">{log.field_label}</span>
+                <span className={cn(
+                  "ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                  log.changed_by_role === "ketua_rt"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-gray-200 text-gray-600"
+                )}>
+                  {roleLabel}
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-400 flex-shrink-0">{date}</span>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded bg-red-50 text-red-700 font-mono line-through">
+                {log.old_value ?? "—"}
+              </span>
+              <span className="text-gray-400">→</span>
+              <span className="px-2 py-1 rounded bg-green-50 text-green-700 font-mono font-medium">
+                {log.new_value ?? "—"}
+              </span>
+            </div>
+
+            <p className="text-[10px] text-gray-400 mt-1.5">
+              Diubah oleh {log.changed_by_name}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── KK Member Card (read-only, unchanged) ────────────────────────────────────
+
+function KKMemberCard({ member, isMain = false }: { member: ResidentDetail; isMain?: boolean }) {
+  const [expanded, setExpanded] = useState(isMain);
+  return (
+    <div className={`rounded-xl border ${isMain ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white"} overflow-hidden`}>
       <button
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left
-          hover:bg-black/5 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-black/5 transition-colors"
       >
         <Avatar name={member.full_name} size="sm" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-900 truncate">
             {member.full_name}
             {member.kepala_keluarga && (
-              <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5
-                rounded-full bg-blue-900 text-white">KK</span>
+              <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-900 text-white">KK</span>
             )}
           </p>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -106,22 +261,17 @@ function KKMemberCard({
             {member.pendidikan_terakhir && ` · ${member.pendidikan_terakhir}`}
           </p>
         </div>
-        <ChevronRight className={`w-4 h-4 text-gray-400 flex-shrink-0
-          transition-transform ${expanded ? "rotate-90" : ""}`} />
+        <ChevronRight className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
       </button>
-
       {expanded && (
         <div className="px-4 pb-4 border-t border-gray-100">
-          <div className="mt-3 grid grid-cols-1 gap-0">
+          <div className="mt-3">
             <DataRow label="NIK"             value={member.nik} />
             <DataRow label="No. KK"          value={member.no_kk} />
             <DataRow label="Tempat Lahir"    value={member.tempat_lahir} />
             <DataRow label="Tanggal Lahir"   value={member.tanggal_lahir
-              ? new Date(member.tanggal_lahir).toLocaleDateString("id-ID", {
-                  day: "numeric", month: "long", year: "numeric"
-                })
-              : null}
-            />
+              ? new Date(member.tanggal_lahir).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+              : null} />
             <DataRow label="Jenis Kelamin"   value={member.jenis_kelamin} />
             <DataRow label="Agama"           value={member.agama} />
             <DataRow label="Pendidikan"      value={member.pendidikan_terakhir} />
@@ -140,19 +290,82 @@ function KKMemberCard({
   );
 }
 
-// ── KK Detail Modal ───────────────────────────────────────────────────────────
+// ─── KK Detail Modal (3 tabs: Data | Edit | Riwayat) ─────────────────────────
 
-function KKDetailModal({
-  user,
-  onClose,
-}: {
-  user:    WargaUser;
-  onClose: () => void;
-}) {
+function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<ModalTab>("data");
+
   const { data: profile, isLoading } = useQuery<ResidentDetail>({
     queryKey: ["warga-profile", user.id],
     queryFn:  () => getWargaFullProfile(user.id),
     staleTime: 60_000,
+  });
+
+  // Edit form state — initialised from profile when tab switches
+  const [editForm, setEditForm] = useState<AdminUpdateResidentPayload>({});
+  const [formDirty, setFormDirty] = useState(false);
+
+  // When switching to edit tab, seed form with current values
+  const handleTabChange = (tab: ModalTab) => {
+    if (tab === "edit" && profile && !formDirty) {
+      // Only include fields that have actual values.
+      // Empty/null fields are omitted entirely so they don\'t
+      // appear in the JSON payload and don\'t trigger model_fields_set.
+      // This ensures the backend only processes truly provided fields.
+      const form: AdminUpdateResidentPayload = {};
+      if (profile.full_name)           form.full_name           = profile.full_name;
+      if (profile.phone)               form.phone               = profile.phone;
+      if (profile.nik)                 form.nik                 = profile.nik;
+      if (profile.no_kk)               form.no_kk               = profile.no_kk;
+      if (profile.tanggal_lahir)       form.tanggal_lahir       = profile.tanggal_lahir;
+      if (profile.tempat_lahir)        form.tempat_lahir        = profile.tempat_lahir;
+      if (profile.jenis_kelamin)       form.jenis_kelamin       = profile.jenis_kelamin;
+      if (profile.agama)               form.agama               = profile.agama;
+      if (profile.pekerjaan)           form.pekerjaan           = profile.pekerjaan;
+      if (profile.status_kawin)        form.status_kawin        = profile.status_kawin;
+      if (profile.status_tinggal)      form.status_tinggal      = profile.status_tinggal;
+      if (profile.status_keluarga)     form.status_keluarga     = profile.status_keluarga;
+      if (profile.alamat_ktp)          form.alamat_ktp          = profile.alamat_ktp;
+      if (profile.pendidikan_terakhir) form.pendidikan_terakhir = profile.pendidikan_terakhir;
+      if (profile.kewarganegaraan)     form.kewarganegaraan     = profile.kewarganegaraan;
+      if (profile.hubungan_dengan_kk)  form.hubungan_dengan_kk  = profile.hubungan_dengan_kk;
+      // kepala_keluarga is bool so always include it
+      form.kepala_keluarga = profile.kepala_keluarga ?? false;
+      setEditForm(form);
+    }
+    setActiveTab(tab);
+  };
+
+  const handleFieldChange = (name: string, value: string | boolean) => {
+    setEditForm(prev => ({ ...prev, [name]: value }));
+    setFormDirty(true);
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: () => updateResidentProfile(profile!.id, editForm),
+    onSuccess: (result) => {
+      if (result.changed_fields === 0) {
+        toast.info("Tidak ada perubahan data");
+        return;
+      }
+      toast.success(`✅ ${result.message} — ${result.changed_fields} field diperbarui`);
+      // Invalidate profile + change log cache
+      queryClient.invalidateQueries({ queryKey: ["warga-profile", user.id] });
+      queryClient.invalidateQueries({ queryKey: ["change-log", profile!.id] });
+      queryClient.invalidateQueries({ queryKey: ["warga"] });
+      setFormDirty(false);
+      setActiveTab("data");   // return to data view after save
+    },
+    onError: (err: any) => {
+  const detail = err?.response?.data?.detail;
+  const msg = typeof detail === "string"
+    ? detail
+    : Array.isArray(detail)
+    ? detail.map((e: any) => e.msg).join(", ")
+    : "Gagal menyimpan perubahan";
+  toast.error(msg);
+},
   });
 
   const completeness = useMemo(() => {
@@ -163,18 +376,21 @@ function KKDetailModal({
       profile.pekerjaan, profile.status_kawin, profile.pendidikan_terakhir,
       profile.hubungan_dengan_kk, profile.kewarganegaraan,
     ];
-    const filled = fields.filter(Boolean).length;
-    return Math.round((filled / fields.length) * 100);
+    return Math.round((fields.filter(Boolean).length / fields.length) * 100);
   }, [profile]);
 
+  const TABS: { key: ModalTab; label: string; icon: React.ReactNode }[] = [
+    { key: "data", label: "Data",    icon: <Users   className="w-3.5 h-3.5" /> },
+    { key: "edit", label: "Edit",    icon: <Edit3   className="w-3.5 h-3.5" /> },
+    { key: "log",  label: "Riwayat", icon: <History className="w-3.5 h-3.5" /> },
+  ];
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center
-      z-50 p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-4">
 
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-100 flex items-center
-          justify-between gap-3">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Avatar name={user.full_name} />
             <div>
@@ -183,13 +399,35 @@ function KKDetailModal({
             </div>
           </div>
           <button onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600
-              hover:bg-gray-100 transition-colors">
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        {/* Tab bar */}
+        <div className="px-6 pt-3 flex gap-1 border-b border-gray-100">
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => handleTabChange(tab.key)}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px",
+                activeTab === tab.key
+                  ? "text-blue-700 border-blue-600 bg-blue-50"
+                  : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50"
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+              {tab.key === "edit" && formDirty && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ml-1" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
           {isLoading ? (
             <div className="py-12 flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
@@ -197,207 +435,234 @@ function KKDetailModal({
           ) : !profile ? (
             <div className="py-8 text-center">
               <Home className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-gray-700">
-                Data kependudukan belum diisi
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Warga belum melengkapi profil
-              </p>
+              <p className="text-sm font-semibold text-gray-700">Data kependudukan belum diisi</p>
             </div>
           ) : (
             <>
-              {/* Profile completeness */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-gray-700">
-                    Kelengkapan Data
-                  </p>
-                  <span className={`text-xs font-bold ${
-                    completeness >= 80 ? "text-green-600" :
-                    completeness >= 50 ? "text-amber-600" : "text-red-500"
-                  }`}>
-                    {completeness}%
-                  </span>
-                </div>
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      completeness >= 80 ? "bg-green-500" :
-                      completeness >= 50 ? "bg-amber-500" : "bg-red-400"
-                    }`}
-                    style={{ width: `${completeness}%` }}
-                  />
-                </div>
-                {profile.no_kk && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    No. KK: <span className="font-mono font-semibold">
-                      {profile.no_kk}
-                    </span>
-                  </p>
-                )}
-              </div>
+              {/* ── DATA TAB ── */}
+              {activeTab === "data" && (
+                <>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-gray-700">Kelengkapan Data</p>
+                      <span className={cn("text-xs font-bold",
+                        completeness >= 80 ? "text-green-600" :
+                        completeness >= 50 ? "text-amber-600" : "text-red-500"
+                      )}>
+                        {completeness}%
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full transition-all",
+                          completeness >= 80 ? "bg-green-500" :
+                          completeness >= 50 ? "bg-amber-500" : "bg-red-400"
+                        )}
+                        style={{ width: `${completeness}%` }}
+                      />
+                    </div>
+                    {profile.no_kk && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        No. KK: <span className="font-mono font-semibold">{profile.no_kk}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Data Pribadi</p>
+                    <KKMemberCard member={profile} isMain={true} />
+                  </div>
+                  {profile.kk_members && profile.kk_members.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                        Anggota KK ({profile.kk_members.length} orang)
+                      </p>
+                      <div className="space-y-2">
+                        {profile.kk_members.map((m: ResidentDetail) => (
+                          <KKMemberCard key={m.id} member={m} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
 
-              {/* Main resident */}
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase
-                  tracking-wider mb-2">
-                  Data Pribadi
-                </p>
-                <KKMemberCard member={profile} isMain={true} />
-              </div>
+              {/* ── EDIT TAB ── */}
+              {activeTab === "edit" && (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                    <p className="text-xs text-amber-800 font-medium">
+                      ⚡ Perubahan sebagai Ketua RT langsung tersimpan dan tercatat di riwayat.
+                    </p>
+                  </div>
 
-              {/* KK Members */}
-              {profile.kk_members && profile.kk_members.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase
-                    tracking-wider mb-2">
-                    Anggota KK ({profile.kk_members.length} orang)
-                  </p>
-                  <div className="space-y-2">
-                    {profile.kk_members.map((m: ResidentDetail) => (
-                      <KKMemberCard key={m.id} member={m} />
-                    ))}
+                  {/* AKUN */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Akun</p>
+                    <div className="space-y-3">
+                      <EditField label="Nama Lengkap"     name="full_name"  value={editForm.full_name}  onChange={handleFieldChange} />
+                      <EditField label="Nomor HP"         name="phone"      value={editForm.phone}      onChange={handleFieldChange} />
+                    </div>
+                  </div>
+
+                  {/* IDENTITAS KTP */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Identitas KTP</p>
+                    <div className="space-y-3">
+                      <EditField label="NIK (16 digit)"   name="nik"          value={editForm.nik}          onChange={handleFieldChange} />
+                      <EditField label="Nomor KK"         name="no_kk"        value={editForm.no_kk}        onChange={handleFieldChange} />
+                      <EditField label="Tanggal Lahir"    name="tanggal_lahir" value={editForm.tanggal_lahir} onChange={handleFieldChange} type="date" />
+                      <EditField label="Tempat Lahir"     name="tempat_lahir" value={editForm.tempat_lahir} onChange={handleFieldChange} />
+                      <EditField label="Jenis Kelamin"    name="jenis_kelamin" value={editForm.jenis_kelamin} onChange={handleFieldChange} type="select" options={JENIS_KELAMIN_OPTIONS} />
+                      <EditField label="Agama"            name="agama"        value={editForm.agama}        onChange={handleFieldChange} type="select" options={AGAMA_OPTIONS} />
+                      <EditField label="Alamat KTP"       name="alamat_ktp"   value={editForm.alamat_ktp}   onChange={handleFieldChange} type="textarea" />
+                    </div>
+                  </div>
+
+                  {/* DATA SOSIAL */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Data Sosial</p>
+                    <div className="space-y-3">
+                      <EditField label="Pekerjaan"        name="pekerjaan"           value={editForm.pekerjaan}           onChange={handleFieldChange} type="select" options={PEKERJAAN_OPTIONS} />
+                      <EditField label="Status Perkawinan" name="status_kawin"        value={editForm.status_kawin}        onChange={handleFieldChange} type="select" options={STATUS_KAWIN_OPTIONS} />
+                      <EditField label="Pendidikan"       name="pendidikan_terakhir" value={editForm.pendidikan_terakhir} onChange={handleFieldChange} type="select" options={PENDIDIKAN_OPTIONS} />
+                      <EditField label="Kewarganegaraan"  name="kewarganegaraan"     value={editForm.kewarganegaraan}     onChange={handleFieldChange} type="select" options={KEWARGANEGARAAN_OPTIONS} />
+                    </div>
+                  </div>
+
+                  {/* DATA RT */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Data RT</p>
+                    <div className="space-y-3">
+                      <EditField label="Status Tinggal"   name="status_tinggal"   value={editForm.status_tinggal}   onChange={handleFieldChange} type="select" options={STATUS_TINGGAL_OPTIONS} />
+                      <EditField label="Status Keluarga"  name="status_keluarga"  value={editForm.status_keluarga}  onChange={handleFieldChange} type="select" options={STATUS_KELUARGA_OPTIONS} />
+                      <EditField label="Hubungan KK"      name="hubungan_dengan_kk" value={editForm.hubungan_dengan_kk} onChange={handleFieldChange} type="select" options={HUBUNGAN_KK_OPTIONS} />
+                      <EditField label="Kepala Keluarga"  name="kepala_keluarga"  value={editForm.kepala_keluarga}  onChange={handleFieldChange} type="toggle" />
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* No KK members info */}
-              {(!profile.kk_members || profile.kk_members.length === 0) &&
-               profile.no_kk && (
-                <div className="bg-amber-50 border border-amber-200
-                  rounded-xl p-3 text-center">
-                  <p className="text-xs text-amber-700">
-                    Belum ada anggota KK lain terdaftar di RTMudah
-                    dengan No. KK yang sama
-                  </p>
-                </div>
+              {/* ── LOG TAB ── */}
+              {activeTab === "log" && (
+                <ChangeLogTab residentId={profile.id} />
               )}
             </>
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100">
-          <button onClick={onClose}
-            className="w-full py-2.5 rounded-xl border border-gray-200
-              text-sm font-semibold text-gray-700 hover:bg-gray-50
-              transition-colors">
-            Tutup
-          </button>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          {activeTab === "edit" ? (
+            <>
+              <button
+                onClick={() => { setFormDirty(false); setActiveTab("data"); }}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => updateMutation.mutate()}
+                disabled={!formDirty || updateMutation.isPending || !profile}
+                className={cn(
+                  "flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all",
+                  formDirty && !updateMutation.isPending
+                    ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98]"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                )}
+              >
+                {updateMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan…</>
+                ) : (
+                  <><Save className="w-4 h-4" /> Simpan Perubahan</>
+                )}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onClose}
+              className="w-full py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Tutup
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ── Warga Row ─────────────────────────────────────────────────────────────────
+// ─── Warga Row (unchanged) ────────────────────────────────────────────────────
 
-function WargaRow({
-  user, rtGroupId, onVerify, onSuspend, isActionLoading,
-  onViewProfile,
-}: {
-  user:            WargaUser;
-  rtGroupId:       string;
-  onVerify:        (id: string) => void;
-  onSuspend:       (id: string) => void;
-  isActionLoading: boolean;
-  onViewProfile:   (user: WargaUser) => void;
+function WargaRow({ user, rtGroupId, onVerify, onSuspend, isActionLoading, onViewProfile }: {
+  user: WargaUser; rtGroupId: string;
+  onVerify: (id: string) => void; onSuspend: (id: string) => void;
+  isActionLoading: boolean; onViewProfile: (user: WargaUser) => void;
 }) {
   return (
-    <tr
-      onClick={() => onViewProfile(user)}
-      className="border-b border-gray-50 hover:bg-blue-50/40
-        transition-colors cursor-pointer group"
-    >
+    <tr onClick={() => onViewProfile(user)}
+      className="border-b border-gray-50 hover:bg-blue-50/40 transition-colors cursor-pointer group">
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
           <Avatar name={user.full_name} />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate
-              group-hover:text-blue-700 transition-colors">
+            <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-700 transition-colors">
               {user.full_name}
             </p>
             <p className="text-xs text-gray-500 truncate">{user.email}</p>
-            {user.phone && (
-              <p className="text-xs text-gray-400">{user.phone}</p>
-            )}
+            {user.phone && <p className="text-xs text-gray-400">{user.phone}</p>}
           </div>
         </div>
       </td>
       <td className="px-6 py-4">
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full
-          text-xs font-semibold bg-gray-100 text-gray-700">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
           {user.role === "ketua_rt" ? "ketua rt" : user.role}
         </span>
       </td>
-      <td className="px-6 py-4">
-        <StatusBadge status={user.status} />
-      </td>
-      <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
-        {formatDate(user.created_at)}
-      </td>
+      <td className="px-6 py-4"><StatusBadge status={user.status} /></td>
+      <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(user.created_at)}</td>
       <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 justify-end">
           {user.status === "pending" && (
-            <button
-              onClick={() => onVerify(user.id)}
-              disabled={isActionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700
-                text-white text-xs font-semibold rounded-lg
-                hover:bg-green-600 disabled:opacity-50 transition-colors"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Verifikasi
+            <button onClick={() => onVerify(user.id)} disabled={isActionLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 text-white text-xs font-semibold rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors">
+              <UserCheck className="w-3.5 h-3.5" /> Verifikasi
             </button>
           )}
           {user.status === "active" && user.role !== "ketua_rt" && (
-            <button
-              onClick={() => onSuspend(user.id)}
-              disabled={isActionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 border
-                border-red-200 text-red-600 text-xs font-semibold rounded-lg
-                hover:bg-red-50 disabled:opacity-50 transition-colors"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              Suspend
+            <button onClick={() => onSuspend(user.id)} disabled={isActionLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors">
+              <XCircle className="w-3.5 h-3.5" /> Suspend
             </button>
           )}
           {user.status === "suspended" && (
-            <button
-              onClick={() => onVerify(user.id)}
-              disabled={isActionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 border
-                border-green-200 text-green-700 text-xs font-semibold
-                rounded-lg hover:bg-green-50 disabled:opacity-50
-                transition-colors"
-            >
-              <CheckCircle className="w-3.5 h-3.5" />
-              Aktifkan
+            <button onClick={() => onVerify(user.id)} disabled={isActionLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-green-200 text-green-700 text-xs font-semibold rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors">
+              <CheckCircle className="w-3.5 h-3.5" /> Aktifkan
             </button>
           )}
-          <ChevronRight className="w-4 h-4 text-gray-300
-            group-hover:text-blue-400 transition-colors" />
+          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-400 transition-colors" />
         </div>
       </td>
     </tr>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ─── Main Page (unchanged) ────────────────────────────────────────────────────
 
 export default function WargaPage() {
   const { data: session }  = useSession();
   const queryClient        = useQueryClient();
   const rtGroupId          = (session?.user as any)?.rt_group_id as string | null;
 
-  const [filter,   setFilter]   = useState<WargaFilter>("all");
-  const [search,   setSearch]   = useState("");
-  const [actionId, setActionId] = useState<string | null>(null);
+  const [filter,       setFilter]       = useState<WargaFilter>("all");
+  const [search,       setSearch]       = useState("");
+  const [actionId,     setActionId]     = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<WargaUser | null>(null);
 
   const { data: wargaList = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ["warga", rtGroupId, filter],
-    queryFn:  () => getWargaList(rtGroupId!, filter),
-    enabled:  !!rtGroupId,
+    queryKey:  ["warga", rtGroupId, filter],
+    queryFn:   () => getWargaList(rtGroupId!, filter),
+    enabled:   !!rtGroupId,
     staleTime: 30_000,
   });
 
@@ -412,7 +677,6 @@ export default function WargaPage() {
   }, [wargaList, search]);
 
   const pendingCount = wargaList.filter(w => w.status === "pending").length;
-
   const stats = useMemo(() => ({
     total:     wargaList.length,
     pending:   wargaList.filter(w => w.status === "pending").length,
@@ -423,7 +687,7 @@ export default function WargaPage() {
   const verifyMutation = useMutation({
     mutationFn: (id: string) => verifyWarga(id),
     onMutate:   (id) => setActionId(id),
-    onSuccess:  (_, id) => {
+    onSuccess:  () => {
       toast.success("✅ Warga berhasil diverifikasi!");
       queryClient.invalidateQueries({ queryKey: ["warga", rtGroupId] });
     },
@@ -455,8 +719,6 @@ export default function WargaPage() {
 
   return (
     <div className="space-y-5">
-
-      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: "Total Warga",  value: stats.total,     bg: "bg-blue-50  text-blue-900"  },
@@ -471,69 +733,42 @@ export default function WargaPage() {
         ))}
       </div>
 
-      {/* Main card */}
-      <div className="bg-white rounded-2xl border border-gray-200
-        shadow-sm overflow-hidden">
-
-        {/* Toolbar */}
-        <div className="px-6 py-4 border-b border-gray-100 flex flex-col
-          sm:flex-row items-start sm:items-center gap-3">
-
-          {/* Filter tabs */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             {FILTERS.map(f => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md
-                  text-xs font-semibold transition-all ${
-                    filter === f.key
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
-              >
-                {f.icon}
-                {f.label}
+              <button key={f.key} onClick={() => setFilter(f.key)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
+                  filter === f.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}>
+                {f.icon} {f.label}
                 {f.key === "pending" && pendingCount > 0 && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5
-                    rounded-full bg-amber-500 text-white">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500 text-white">
                     {pendingCount}
                   </span>
                 )}
               </button>
             ))}
           </div>
-
-          {/* Search */}
           <div className="relative flex-1 w-full sm:w-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2
-              w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Cari nama, email, HP..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200
-                text-sm bg-gray-50 focus:outline-none focus:ring-2
-                focus:ring-blue-100 focus:border-blue-400"
-            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input type="text" placeholder="Cari nama, email, HP..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400" />
           </div>
-
           <button onClick={() => refetch()}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600
-              hover:bg-gray-100 transition-colors flex-shrink-0">
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Click hint */}
         <div className="px-6 py-2 bg-blue-50 border-b border-blue-100">
           <p className="text-xs text-blue-600">
-            💡 Klik nama warga untuk melihat detail data KK dan kependudukan
+            💡 Klik nama warga untuk melihat detail, edit data, atau riwayat perubahan
           </p>
         </div>
 
-        {/* Table */}
         {isLoading ? (
           <div className="py-12 flex items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
@@ -541,10 +776,7 @@ export default function WargaPage() {
         ) : isError ? (
           <div className="text-center py-12">
             <p className="font-bold text-gray-800">Gagal memuat data</p>
-            <button onClick={() => refetch()}
-              className="mt-2 text-sm text-blue-600 hover:underline">
-              Coba lagi
-            </button>
+            <button onClick={() => refetch()} className="mt-2 text-sm text-blue-600 hover:underline">Coba lagi</button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
@@ -559,9 +791,7 @@ export default function WargaPage() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   {["Warga", "Role", "Status", "Bergabung", "Aksi"].map(h => (
-                    <th key={h}
-                      className="px-6 py-3 text-left text-xs font-semibold
-                        text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -569,15 +799,11 @@ export default function WargaPage() {
               </thead>
               <tbody>
                 {filtered.map(user => (
-                  <WargaRow
-                    key={user.id}
-                    user={user}
-                    rtGroupId={rtGroupId}
+                  <WargaRow key={user.id} user={user} rtGroupId={rtGroupId}
                     onVerify={(id) => verifyMutation.mutate(id)}
                     onSuspend={(id) => suspendMutation.mutate(id)}
                     isActionLoading={actionId === user.id}
-                    onViewProfile={setSelectedUser}
-                  />
+                    onViewProfile={setSelectedUser} />
                 ))}
               </tbody>
             </table>
@@ -590,12 +816,8 @@ export default function WargaPage() {
         )}
       </div>
 
-      {/* KK Detail Modal */}
       {selectedUser && (
-        <KKDetailModal
-          user={selectedUser}
-          onClose={() => setSelectedUser(null)}
-        />
+        <KKDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} />
       )}
     </div>
   );

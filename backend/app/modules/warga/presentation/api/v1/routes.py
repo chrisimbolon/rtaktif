@@ -5,6 +5,8 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import EntityNotFoundError
 from app.modules.warga.application.schemas import (AddAnggotaRequest,
+                                                   AdminUpdateResidentRequest,
+                                                   ChangeLogEntry,
                                                    RegisterResidentRequest)
 from app.modules.warga.application.use_cases.register_resident import \
     RegisterResident
@@ -13,6 +15,7 @@ from app.modules.warga.application.use_cases.verify_resident import \
 from app.modules.warga.infrastructure.models import ResidentModel
 from app.modules.warga.infrastructure.repository import PgResidentRepository
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -481,3 +484,241 @@ async def verify_resident(
         return {"id": str(resident.id), "status": resident.status}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=e.message)
+    
+
+FIELD_LABELS: dict[str, str] = {
+    "full_name":           "Nama Lengkap",
+    "phone":               "Nomor HP",
+    "nik":                 "NIK",
+    "no_kk":               "Nomor KK",
+    "tanggal_lahir":       "Tanggal Lahir",
+    "tempat_lahir":        "Tempat Lahir",
+    "jenis_kelamin":       "Jenis Kelamin",
+    "agama":               "Agama",
+    "pekerjaan":           "Pekerjaan",
+    "status_kawin":        "Status Perkawinan",
+    "status_tinggal":      "Status Tinggal",
+    "status_keluarga":     "Status dalam Keluarga",
+    "kepala_keluarga":     "Kepala Keluarga",
+    "alamat_ktp":          "Alamat KTP",
+    "pendidikan_terakhir": "Pendidikan Terakhir",
+    "kewarganegaraan":     "Kewarganegaraan",
+    "hubungan_dengan_kk":  "Hubungan dengan KK",
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PATCH /warga/{resident_id}/admin-update
+# Ketua RT full-authority profile update — immediate, no approval needed
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.patch("/warga/{resident_id}/admin-update", tags=["Warga"])
+async def admin_update_resident(
+    resident_id:  UUID,
+    body:         AdminUpdateResidentRequest,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Ketua RT updates any warga profile field immediately.
+    Every changed field is logged to resident_change_logs with
+    old value, new value, who changed it, and when.
+
+    Only fields explicitly provided in the request body are updated.
+    Fields set to None in the JSON are ignored (partial update).
+    Fields explicitly sent as null overwrite to null — use with care.
+    """
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    from app.modules.iam.infrastructure.models import UserModel
+    from app.modules.warga.domain.entities import (Agama, HubunganDenganKK,
+                                                   JenisKelamin,
+                                                   Kewarganegaraan, Pekerjaan,
+                                                   PendidikanTerakhir,
+                                                   StatusKawin, StatusKeluarga,
+                                                   StatusTinggal)
+    from sqlalchemy import insert as sa_insert
+    from sqlalchemy import select as sa_select
+
+    repo     = PgResidentRepository(db)
+    resident = await repo.get_by_id(resident_id)
+    if not resident:
+        raise HTTPException(status_code=404, detail="Warga tidak ditemukan")
+
+    # Verify Ketua RT is managing this resident's RT group
+    from app.modules.iam.infrastructure.models import RTGroupModel
+    rt_result = await db.execute(
+        sa_select(RTGroupModel).where(
+            RTGroupModel.admin_user_id == _uuid.UUID(current_user["user_id"])
+        )
+    )
+    rt_group = rt_result.scalar_one_or_none()
+    if not rt_group or rt_group.id != resident.rt_group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Anda tidak memiliki akses ke data warga ini"
+        )
+
+    # Fetch changer's name for the log
+    changer = await db.get(UserModel, _uuid.UUID(current_user["user_id"]))
+    changer_name = changer.full_name if changer else "Unknown"
+
+    # ── Build diff — only process fields that were explicitly provided ────
+    # Use model_fields_set to detect which fields were in the request body.
+    # This correctly distinguishes "not sent" from "sent as null".
+    provided = body.model_fields_set
+    now      = datetime.now(timezone.utc)
+    logs     = []
+
+    def get_old_value(field: str) -> str | None:
+        """Get current string representation of a field for the log."""
+        val = getattr(resident, field, None)
+        if val is None:
+            return None
+        if hasattr(val, "value"):   # enum
+            return val.value
+        return str(val)
+
+    def coerce_enum(field: str, raw: str | None):
+        """Safely coerce a string to the correct domain enum."""
+        if raw is None:
+            return None
+        enum_map = {
+            "jenis_kelamin":       JenisKelamin,
+            "agama":               Agama,
+            "pekerjaan":           Pekerjaan,
+            "status_kawin":        StatusKawin,
+            "status_tinggal":      StatusTinggal,
+            "status_keluarga":     StatusKeluarga,
+            "pendidikan_terakhir": PendidikanTerakhir,
+            "kewarganegaraan":     Kewarganegaraan,
+            "hubungan_dengan_kk":  HubunganDenganKK,
+        }
+        if field in enum_map:
+            try:
+                return enum_map[field](raw)
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Nilai '{raw}' tidak valid untuk field {field}"
+                )
+        return raw
+
+    # Build kwargs for update_profile() + collect log entries
+    update_kwargs: dict = {}
+
+    for field in FIELD_LABELS:
+        if field not in provided:
+            continue   # not in request — skip
+
+        raw_new   = getattr(body, field, None)
+        old_value = get_old_value(field)
+
+        # Coerce enum fields
+        coerced = coerce_enum(field, raw_new)
+        update_kwargs[field] = coerced
+
+        # Determine new_value string for log
+        if coerced is None:
+            new_value = None
+        elif hasattr(coerced, "value"):
+            new_value = coerced.value
+        elif isinstance(coerced, bool):
+            new_value = "Ya" if coerced else "Tidak"
+        else:
+            new_value = str(coerced)
+
+        # Only log if value actually changed
+        old_str = "Ya" if old_value == "True" else ("Tidak" if old_value == "False" else old_value)
+        if old_str != new_value:
+            logs.append({
+                "id":             _uuid.uuid4(),
+                "resident_id":    resident_id,
+                "rt_group_id":    resident.rt_group_id,
+                "changed_by":     _uuid.UUID(current_user["user_id"]),
+                "changed_by_role": current_user.get("role", "ketua_rt"),
+                "changed_by_name": changer_name,
+                "resident_name":  resident.full_name,
+                "field_name":     field,
+                "field_label":    FIELD_LABELS[field],
+                "old_value":      old_str,
+                "new_value":      new_value,
+                "changed_at":     now,
+            })
+
+    if not update_kwargs:
+        return {"message": "Tidak ada perubahan", "changed_fields": 0}
+
+    # ── Apply update via domain entity ────────────────────────────────────
+    resident.update_profile(**update_kwargs)
+    await repo.save(resident)
+
+    # ── Write audit log entries ───────────────────────────────────────────
+    # Direct insert — not through repository pattern (pure infrastructure)
+    if logs:
+        from app.modules.warga.infrastructure.models import \
+            ResidentChangeLogModel
+        for log in logs:
+            db.add(ResidentChangeLogModel(**log))
+
+    await db.commit()
+
+    return {
+        "message":        f"Data {resident.full_name} berhasil diperbarui",
+        "changed_fields": len(logs),
+        "changes":        [
+            {
+                "field":     l["field_name"],
+                "label":     l["field_label"],
+                "old_value": l["old_value"],
+                "new_value": l["new_value"],
+            }
+            for l in logs
+        ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /warga/{resident_id}/change-log
+# Returns audit trail for a specific resident
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/warga/{resident_id}/change-log", response_model=list[ChangeLogEntry], tags=["Warga"])
+async def get_resident_change_log(
+    resident_id:  UUID,
+    limit:        int  = 20,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Returns last N changes to a resident profile.
+    Sorted newest-first. Used by the change log tab in KKDetailModal.
+    """
+    from app.modules.warga.infrastructure.models import ResidentChangeLogModel
+    from sqlalchemy import desc as sa_desc
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(
+        sa_select(ResidentChangeLogModel)
+        .where(ResidentChangeLogModel.resident_id == resident_id)
+        .order_by(sa_desc(ResidentChangeLogModel.changed_at))
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+
+    return [
+        {
+            "id":              str(r.id),
+            "field_name":      r.field_name,
+            "field_label":     r.field_label,
+            "old_value":       r.old_value,
+            "new_value":       r.new_value,
+            "changed_by":      str(r.changed_by),
+            "changed_by_name": r.changed_by_name,
+            "changed_by_role": r.changed_by_role,
+            "resident_name":   r.resident_name,
+            "changed_at":      r.changed_at.isoformat(),
+        }
+        for r in rows
+    ]

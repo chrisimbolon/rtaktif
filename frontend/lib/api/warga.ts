@@ -103,3 +103,110 @@ export const wargaApi = {
   changeRole,
   formatDate,
 };
+
+export interface AdminUpdateResidentPayload {
+  full_name?:           string;
+  phone?:               string;
+  nik?:                 string;
+  no_kk?:               string;
+  tanggal_lahir?:       string;   // ISO date "YYYY-MM-DD"
+  tempat_lahir?:        string;
+  jenis_kelamin?:       string;
+  agama?:               string;
+  pekerjaan?:           string;
+  status_kawin?:        string;
+  status_tinggal?:      string;
+  status_keluarga?:     string;
+  kepala_keluarga?:     boolean;
+  alamat_ktp?:          string;
+  pendidikan_terakhir?: string;
+  kewarganegaraan?:     string;
+  hubungan_dengan_kk?:  string;
+}
+
+export interface AdminUpdateResponse {
+  message:        string;
+  changed_fields: number;
+  changes: {
+    field:     string;
+    label:     string;
+    old_value: string | null;
+    new_value: string | null;
+  }[];
+}
+
+export interface ChangeLogEntry {
+  id:               string;
+  field_name:       string;
+  field_label:      string;
+  old_value:        string | null;
+  new_value:        string | null;
+  changed_by:       string;
+  changed_by_name:  string;
+  changed_by_role:  string;
+  resident_name:    string;
+  changed_at:       string;   // ISO string
+}
+
+// ─── New API calls ────────────────────────────────────────────────────────────
+
+export const updateResidentProfile = async (
+  residentId: string,
+  payload: AdminUpdateResidentPayload,
+): Promise<AdminUpdateResponse> => {
+  const { data } = await apiClient.patch<AdminUpdateResponse>(
+    `/warga/${residentId}/admin-update`,
+    payload,
+  );
+  return data;
+};
+
+export const getResidentChangeLog = async (
+  residentId: string,
+  limit = 20,
+): Promise<ChangeLogEntry[]> => {
+  const { data } = await apiClient.get<ChangeLogEntry[]>(
+    `/warga/${residentId}/change-log`,
+    { params: { limit } },
+  );
+  return data;
+};
+
+// ─── Enum option lists (for dropdowns in edit form) ───────────────────────────
+// Derived from domain entities — update if enums change
+
+export const JENIS_KELAMIN_OPTIONS = ["LAKI-LAKI", "PEREMPUAN"] as const;
+
+export const AGAMA_OPTIONS = [
+  "ISLAM", "KATHOLIK", "KRISTEN", "HINDU", "BUDDHA", "KONGHUCU",
+] as const;
+
+export const PEKERJAAN_OPTIONS = [
+  "PELAJAR/MAHASISWA", "PNS", "KARYAWAN SWASTA", "KARYAWAN BUMN",
+  "TNI", "POLRI", "NAKES", "WIRASWASTA", "MENGURUS RUMAH TANGGA",
+  "GURU", "OJEK", "LAINNYA",
+] as const;
+
+export const STATUS_KAWIN_OPTIONS = [
+  "BELUM KAWIN", "KAWIN", "CERAI HIDUP", "CERAI MATI",
+] as const;
+
+export const STATUS_TINGGAL_OPTIONS = [
+  "TETAP", "KONTRAK", "KOST", "PINDAH", "MENINGGAL", "LAINNYA",
+] as const;
+
+export const STATUS_KELUARGA_OPTIONS = [
+  "SUAMI", "ISTRI", "ANAK", "ORANG TUA", "SAUDARA", "LAINNYA", "N/A",
+] as const;
+
+export const PENDIDIKAN_OPTIONS = [
+  "TIDAK SEKOLAH", "BELUM SEKOLAH", "SD", "SMP", "SMA",
+  "SMK", "D3", "S1", "S2", "S3", "LAINNYA",
+] as const;
+
+export const KEWARGANEGARAAN_OPTIONS = ["WNI", "WNA"] as const;
+
+export const HUBUNGAN_KK_OPTIONS = [
+  "KEPALA KELUARGA", "SUAMI", "ISTRI", "ANAK", "MENANTU",
+  "CUCU", "ORANG TUA", "MERTUA", "SAUDARA", "PEMBANTU", "LAINNYA",
+] as const;

@@ -1,5 +1,5 @@
 """Subscription Pydantic schemas — request/response models.
-Annual plan only: Rp 400.000/tahun.
+Annual plan only: Rp 450.000/tahun.
 """
 from typing import Optional
 from uuid import UUID

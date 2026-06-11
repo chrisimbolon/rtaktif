@@ -39,7 +39,7 @@ const PLANS = [
     cta: "Mulai Gratis", href: "/register", featured: false,
   },
   {
-    name: "RT Aktif", price: "Rp 49k", period: "/bulan",
+    name: "RT Aktif", price: "Rp 45.000,-", period: "/bulan",
     desc: "Untuk RT yang ingin fitur lengkap dan notifikasi otomatis",
     features: ["Hingga 150 KK", "Semua fitur Starter", "Laporan warga", "Notifikasi WhatsApp", "Analitik lengkap", "3 admin"],
     cta: "Coba Gratis 7 Hari", href: "/register", featured: true,

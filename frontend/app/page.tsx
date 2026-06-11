@@ -42,7 +42,7 @@ const PLANS = [
     name: "RT Aktif", price: "Rp 49k", period: "/bulan",
     desc: "Untuk RT yang ingin fitur lengkap dan notifikasi otomatis",
     features: ["Hingga 150 KK", "Semua fitur Starter", "Laporan warga", "Notifikasi WhatsApp", "Analitik lengkap", "3 admin"],
-    cta: "Coba Gratis 30 Hari", href: "/register", featured: true,
+    cta: "Coba Gratis 7 Hari", href: "/register", featured: true,
   },
   {
     name: "Pro RW", price: "Rp 149k", period: "/bulan",

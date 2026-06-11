@@ -1,6 +1,5 @@
 "use client";
 // components/subscription/PaymentModal.tsx
-//
 // Full payment flow modal:
 //   1. Shows bank transfer instructions (fixed Rp 400.000)
 //   2. Drag & drop / click to upload bukti bayar

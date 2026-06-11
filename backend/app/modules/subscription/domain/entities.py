@@ -2,7 +2,7 @@
 
 Pricing model (final):
   Trial:  7 days free
-  Annual: Rp 400.000/tahun — only plan available
+  Annual: Rp 450.000/tahun — only plan available
   Grace:  14 days after expiry before full lock
 """
 from dataclasses import dataclass
@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 from uuid import UUID, uuid4
-
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 

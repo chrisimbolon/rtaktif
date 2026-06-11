@@ -1,5 +1,5 @@
 """Onboarding routes — Ketua RT verification endpoints.
-
+app/modules/iam/presentation/api/v1/onboarding_routes.py
 Router prefix : /onboarding
 Tags          : ["Onboarding"]
 

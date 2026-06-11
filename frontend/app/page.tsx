@@ -35,7 +35,7 @@ const PLANS = [
   {
     name: "RT Aktif", price: "Rp 450.000,-", period: "/tahun",
     desc: "Untuk RT yang ingin fitur lengkap dan notifikasi otomatis",
-    features: ["Hingga 150 KK", "Data & profil warga","Tagihan bulanan","Pengumuman","Laporan warga", "Notifikasi WhatsApp", "Analitik lengkap", "1 admin"],
+    features: ["Hingga 200 KK", "Data & profil warga","Tagihan bulanan","Pengumuman","Laporan warga", "Notifikasi WhatsApp", "Analitik lengkap", "1 admin"],
     cta: "Coba Gratis 7 Hari", href: "/register", featured: true,
   },
   {

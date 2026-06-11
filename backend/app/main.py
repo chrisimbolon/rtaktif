@@ -19,6 +19,10 @@ from app.modules.iam.presentation.api.v1.routes import router as iam_router
 from app.modules.komunikasi.domain.events import AnnouncementPublished
 from app.modules.komunikasi.presentation.api.v1.routes import \
     router as komunikasi_router
+from app.modules.subscription.infrastructure.models import (
+    RTSubscriptionModel, SubscriptionPaymentModel)
+from app.modules.subscription.presentation.api.v1.routes import \
+    router as subscription_router
 from app.modules.tagihan.domain.events import InvoiceGenerated
 from app.modules.tagihan.presentation.api.v1.routes import \
     router as tagihan_router
@@ -105,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(tagihan_router,     prefix=prefix)
     app.include_router(komunikasi_router,  prefix=prefix)
     app.include_router(onboarding_router,  prefix=prefix)
+    app.include_router(subscription_router, prefix=prefix)
 
     @app.get("/health", tags=["Health"])
     async def health():

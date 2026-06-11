@@ -486,6 +486,33 @@ async def verify_rt_group(
         )
     except (EntityNotFoundError, InvalidStateTransitionError, DomainException) as exc:
         raise _exception_to_http(exc)
+    
+    # ── Auto-create 7-day trial on approval ───────────────────────────────
+    if payload.action == "approve":
+        import uuid as _uuid
+        from datetime import datetime, timedelta, timezone
+
+        from app.modules.subscription.infrastructure.models import \
+            RTSubscriptionModel
+        from sqlalchemy import select as sa_select
+
+        existing_sub = await db.execute(
+            sa_select(RTSubscriptionModel).where(
+                RTSubscriptionModel.rt_group_id == rt_group.id
+            )
+        )
+        if not existing_sub.scalar_one_or_none():
+            now = datetime.now(timezone.utc)
+            trial = RTSubscriptionModel(
+                id            = _uuid.uuid4(),
+                rt_group_id   = rt_group.id,
+                plan          = "trial",
+                status        = "trial",
+                trial_ends_at = now + timedelta(days=7),
+            )
+            db.add(trial)
+            await db.commit()
+    # ─────────────────────────────────────────────────────────────────────
 
     action_msg = {
         "approve": "Akun Ketua RT berhasil diaktifkan. Notifikasi WhatsApp akan dikirim.",

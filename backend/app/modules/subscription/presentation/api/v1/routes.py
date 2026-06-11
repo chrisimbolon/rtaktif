@@ -1,6 +1,6 @@
 """
 Subscription API routes — RTMudah SaaS billing.
-Annual plan only: Rp 400.000/tahun.
+Annual plan only: Rp 450.000/tahun.
 
 File: app/modules/subscription/presentation/api/v1/routes.py
 """
@@ -10,24 +10,15 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin, require_superadmin
+from app.core.dependencies import (get_current_user, require_admin,
+                                   require_superadmin)
 from app.modules.subscription.application.schemas import (
-    GrantFreeSubscriptionRequest,
-    PaymentResponse,
-    PendingPaymentItem,
-    ReviewPaymentRequest,
-    SubmitPaymentRequest,
-    SubscriptionStatusResponse,
-)
-from app.modules.subscription.domain.entities import (
-    ANNUAL_PRICE_IDR,
-    GRACE_DAYS,
-    TRIAL_DAYS,
-)
+    GrantFreeSubscriptionRequest, PaymentResponse, PendingPaymentItem,
+    ReviewPaymentRequest, SubmitPaymentRequest, SubscriptionStatusResponse)
+from app.modules.subscription.domain.entities import (ANNUAL_PRICE_IDR,
+                                                      GRACE_DAYS, TRIAL_DAYS)
 from app.modules.subscription.infrastructure.models import (
-    RTSubscriptionModel,
-    SubscriptionPaymentModel,
-)
+    RTSubscriptionModel, SubscriptionPaymentModel)
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,7 +170,7 @@ async def submit_payment(
     if body.plan != "annual":
         raise HTTPException(
             status_code=422,
-            detail="RTMudah hanya tersedia dalam paket tahunan — Rp 400.000/tahun"
+            detail="RTMudah hanya tersedia dalam paket tahunan — Rp 450.000/tahun"
         )
 
     user_id  = _uuid.UUID(current_user["user_id"])

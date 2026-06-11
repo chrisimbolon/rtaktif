@@ -1,5 +1,5 @@
 // lib/api/subscription.ts
-// RTMudah subscription API — annual plan Rp 400.000/tahun
+// RTMudah subscription API — annual plan Rp 450.000/tahun
 
 import apiClient from "./client";
 

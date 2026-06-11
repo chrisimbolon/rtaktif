@@ -4,10 +4,14 @@
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { SessionGuard } from "@/components/shared/SessionGuard";
+import { LockScreen } from "@/components/subscription/LockScreen";
+import { PaymentModal } from "@/components/subscription/PaymentModal";
+import { SubscriptionBanner } from "@/components/subscription/SubscriptionBanner";
 import { useRTGroup } from "@/lib/hooks/useRTGroup";
+import { useSubscription } from "@/lib/hooks/useSubscription";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 const ADMIN_ROLES = ["admin_rt", "admin_rw", "super_admin", "ketua_rt", "superadmin"];
 
@@ -25,6 +29,27 @@ const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
   "/superadmin/dashboard":    { title: "Platform Dashboard",  subtitle: "Ringkasan platform RTMudah"              },
   "/superadmin/verifikasi":   { title: "Verifikasi Ketua RT", subtitle: "Tinjau & setujui pendaftaran Ketua RT"   },
 };
+
+
+function SubscriptionGate({ children }: { children: React.ReactNode }) {
+  const { accessLevel, statusLoading } = useSubscription();
+  const [showPayment, setShowPayment]  = useState(false);
+
+  if (statusLoading) return <>{children}</>;
+
+  return (
+    <>
+      <SubscriptionBanner onPayClick={() => setShowPayment(true)} />
+      <>{children}</>
+      {accessLevel === "locked" && (
+        <LockScreen onPayClick={() => setShowPayment(true)} />
+      )}
+      {showPayment && (
+        <PaymentModal onClose={() => setShowPayment(false)} />
+      )}
+    </>
+  );
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -93,9 +118,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AdminSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <AdminHeader title={meta.title} subtitle={meta.subtitle} />
-          <main className="flex-1 p-6 overflow-y-auto">
-            {children}
-          </main>
+          {isSuperadmin ? (
+  <main className="flex-1 p-6 overflow-y-auto">
+    {children}
+  </main>
+) : (
+  <SubscriptionGate>
+    <main className="flex-1 p-6 overflow-y-auto">
+      {children}
+    </main>
+  </SubscriptionGate>
+)}
         </div>
       </div>
     </SessionGuard>

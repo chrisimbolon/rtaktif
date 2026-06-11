@@ -67,7 +67,7 @@ export function SubscriptionBanner({ onPayClick }: SubscriptionBannerProps) {
               Langganan RTMudah Anda telah berakhir
             </p>
             <p className="text-xs text-red-600 mt-0.5">
-              {daysText} — segera bayar Rp 400.000 untuk melanjutkan akses penuh.
+              {daysText} — segera bayar Rp 450.000 untuk melanjutkan akses penuh.
             </p>
           </div>
         </div>

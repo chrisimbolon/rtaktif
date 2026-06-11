@@ -375,7 +375,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-white/10 pt-6 text-xs text-center">
-            © 2026 RTMudah. Dibangun dengan ❤️ untuk Indonesia.
+            © 2026 RTMudah. Dibangun dengan ❤️ untuk Indonesia. oleh PT Langit Strategi Indonesia
           </div>
         </div>
       </footer>

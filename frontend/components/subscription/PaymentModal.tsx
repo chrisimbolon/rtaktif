@@ -23,7 +23,7 @@ import { toast } from "sonner";
 const BANK_INFO = {
   bank:    "BCA",
   account: "1234567890",
-  name:    "PT RTMudah Indonesia",
+  name:    "PT Langit Strategi Indonesia",
   amount:  ANNUAL_PRICE_IDR,
 };
 

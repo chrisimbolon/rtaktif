@@ -142,9 +142,6 @@ export function SubscriptionBanner({ onPayClick }: SubscriptionBannerProps) {
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
-        {/* <button onClick={() => setDismissed(true)} className="text-green-400 hover:text-green-600 flex-shrink-0">
-          <X className="w-3.5 h-3.5" />
-        </button> */}
       </div>
     );
   }

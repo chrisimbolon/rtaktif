@@ -1,13 +1,11 @@
 // lib/api/superadmin.ts
-// Superadmin onboarding verification API client
+// EXTENDED — adds subscription payment queue endpoints
+// All existing exports preserved exactly.
 //
-// EXTENDED from original — all existing exports preserved exactly.
-// Added: KTP OCR types + retriggerOCR call.
-//
-// Wires to:
-//   GET  /onboarding/pending                              — existing
-//   POST /onboarding/rt-groups/{id}/verify                — existing
-//   POST /onboarding/rt-groups/{id}/retrigger-ocr         — NEW
+// New additions:
+//   GET   /subscription/pending-payments        — payment review queue
+//   PATCH /subscription/payment/{id}/review     — confirm or reject
+//   POST  /subscription/init-trial/{rt_id}      — manual trial init
 
 import apiClient from "./client";
 
@@ -21,7 +19,6 @@ export interface PendingRTGroup {
   ktp_url:         string | null;
   sk_url:          string | null;
   created_at:      string;
-  // New OCR fields — optional so existing queue items without OCR still type-check
   ktp_ocr_confidence?: number | null;
   ktp_ocr_flags?:      KTPFlag[];
   ktp_verified?:       boolean;
@@ -43,8 +40,6 @@ export interface VerifyRTGroupResponse {
   needs_renewal:       boolean;
   message:             string;
 }
-
-// ─── New OCR types ────────────────────────────────────────────────────────────
 
 export type KTPFlag =
   | "nik_format_invalid"
@@ -79,22 +74,43 @@ export interface OCRRetriggerResponse {
   extracted:        KTPOCRData | null;
 }
 
+// ─── NEW: Payment queue types ─────────────────────────────────────────────────
+
+export interface PendingPaymentItem {
+  payment_id:          string;
+  rt_group_id:         string;
+  rt_name:             string;
+  ketua_rt_name:       string;
+  ketua_rt_phone:      string;
+  plan:                string;
+  amount_idr:          number;
+  bukti_bayar_url:     string | null;
+  notes:               string | null;
+  submitted_at:        string;
+  subscription_status: string;
+}
+
+export interface ReviewPaymentPayload {
+  action:           "confirm" | "reject";
+  rejection_reason?: string;
+}
+
+export interface ReviewPaymentResponse {
+  message:      string;
+  payment_id:   string;
+  period_start?: string;
+  period_end?:   string;
+}
+
 // ─── API calls (existing preserved, new added) ────────────────────────────────
 
 export const superadminApi = {
-  /**
-   * GET /onboarding/pending
-   * Returns all RT groups awaiting superadmin verification — FIFO queue.
-   */
+  // ── Existing ──────────────────────────────────────────────────────────────
   listPending: async (): Promise<PendingRTGroup[]> => {
     const { data } = await apiClient.get<PendingRTGroup[]>("/onboarding/pending");
     return data;
   },
 
-  /**
-   * POST /onboarding/rt-groups/{id}/verify
-   * Approve or reject a Ketua RT verification request.
-   */
   verifyRTGroup: async (
     rtGroupId: string,
     payload: VerifyRTGroupPayload,
@@ -106,20 +122,42 @@ export const superadminApi = {
     return data;
   },
 
-  /**
-   * POST /onboarding/rt-groups/{id}/retrigger-ocr
-   * Re-run KTP OCR on already-uploaded image (e.g. after Ketua RT reuploads).
-   * Superadmin only — token required.
-   */
   retriggerOCR: async (rtGroupId: string): Promise<OCRRetriggerResponse> => {
     const { data } = await apiClient.post<OCRRetriggerResponse>(
       `/onboarding/rt-groups/${rtGroupId}/retrigger-ocr`,
     );
     return data;
   },
+
+  // ── NEW: Payment queue ────────────────────────────────────────────────────
+
+  /**
+   * GET /subscription/pending-payments
+   * Returns all pending bukti bayar submissions for review — FIFO queue.
+   */
+  listPendingPayments: async (): Promise<PendingPaymentItem[]> => {
+    const { data } = await apiClient.get<PendingPaymentItem[]>("/subscription/pending-payments");
+    return data;
+  },
+
+  /**
+   * PATCH /subscription/payment/{id}/review
+   * Confirm or reject a payment submission.
+   * On confirm → subscription automatically activated/extended.
+   */
+  reviewPayment: async (
+    paymentId: string,
+    payload:   ReviewPaymentPayload,
+  ): Promise<ReviewPaymentResponse> => {
+    const { data } = await apiClient.patch<ReviewPaymentResponse>(
+      `/subscription/payment/${paymentId}/review`,
+      payload,
+    );
+    return data;
+  },
 };
 
-// ─── UI helpers ───────────────────────────────────────────────────────────────
+// ─── UI helpers (existing preserved) ─────────────────────────────────────────
 
 export const KTP_FLAG_LABELS: Record<KTPFlag, string> = {
   nik_format_invalid:      "NIK format tidak valid",

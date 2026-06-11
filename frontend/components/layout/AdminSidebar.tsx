@@ -34,6 +34,7 @@ const NAV = [
 const SUPERADMIN_NAV = [
   { label: "Dashboard",     href: "/superadmin/dashboard",   icon: LayoutDashboard },
   { label: "Verifikasi RT", href: "/superadmin/verifikasi",  icon: ShieldCheck     },
+  { label: "Pembayaran",    href: "/superadmin/pembayaran",  icon: CreditCard      },
 ];
 
 export function AdminSidebar() {

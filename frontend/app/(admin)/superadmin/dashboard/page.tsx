@@ -10,24 +10,26 @@
  * Wires to: GET /onboarding/platform-stats (superadmin only)
  */
 
-import { useAuth } from "@/lib/hooks/useAuth";
 import apiClient from "@/lib/api/client";
+import { superadminApi } from "@/lib/api/superadmin";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import {
   AlertTriangle,
-  CheckCircle,
-  Clock,
-  Users,
+  BanknoteIcon,
   Building2,
-  XCircle,
+  CheckCircle,
   ChevronRight,
+  Clock,
   Loader2,
   RefreshCw,
+  Users,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,6 +150,11 @@ export default function SuperadminDashboardPage() {
     staleTime:     30_000,
   });
 
+  const { data: pendingPayments = [] } = useQuery({
+    queryKey: ["pending-payments"],
+    queryFn:  superadminApi.listPendingPayments,
+    staleTime: 30_000,
+  });
   const greeting = () => {
     const h = new Date().getHours();
     if (h < 11) return "Selamat pagi";
@@ -236,6 +243,34 @@ export default function SuperadminDashboardPage() {
           </Link>
         </div>
       )}
+
+      {pendingPayments.length > 0 && (
+    <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4
+                    flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+          <BanknoteIcon className="w-4 h-4 text-green-600" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-green-800">
+            {pendingPayments.length} pembayaran menunggu konfirmasi
+          </p>
+          <p className="text-xs text-green-600 mt-0.5">
+            Target konfirmasi 1×24 jam
+          </p>
+        </div>
+      </div>
+      <Link
+        href="/superadmin/pembayaran"
+        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl
+                   bg-green-600 hover:bg-green-500 text-white text-sm font-medium
+                   transition-colors"
+      >
+        Konfirmasi Sekarang
+        <ChevronRight className="w-3.5 h-3.5" />
+      </Link>
+    </div>
+  )}
 
       {/* ── Platform stats grid ─────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -333,41 +368,62 @@ export default function SuperadminDashboardPage() {
           )}
         </div>
       </div>
-
+      
       {/* ── Quick actions ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Link
-          href="/superadmin/verifikasi"
-          className="flex items-center gap-4 bg-white rounded-xl border border-gray-200
-                     shadow-sm p-5 hover:border-orange-300 hover:shadow-md transition-all group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center
-                          group-hover:bg-orange-100 transition-colors flex-shrink-0">
-            <Clock className="w-5 h-5 text-orange-500" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900">Antrian Verifikasi</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {rt_groups.pending > 0
-                ? `${rt_groups.pending} RT menunggu review`
-                : "Tidak ada antrian saat ini"}
-            </p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-gray-300 ml-auto group-hover:text-orange-400
-                                   transition-colors" />
-        </Link>
+<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <Link
+    href="/superadmin/verifikasi"
+    className="flex items-center gap-4 bg-white rounded-xl border border-gray-200
+               shadow-sm p-5 hover:border-orange-300 hover:shadow-md transition-all group"
+  >
+    <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center
+                    group-hover:bg-orange-100 transition-colors flex-shrink-0">
+      <Clock className="w-5 h-5 text-orange-500" />
+    </div>
+    <div>
+      <p className="text-sm font-semibold text-gray-900">Antrian Verifikasi</p>
+      <p className="text-xs text-gray-400 mt-0.5">
+        {rt_groups.pending > 0
+          ? `${rt_groups.pending} RT menunggu review`
+          : "Tidak ada antrian saat ini"}
+      </p>
+    </div>
+    <ChevronRight className="w-4 h-4 text-gray-300 ml-auto group-hover:text-orange-400
+                             transition-colors" />
+  </Link>
 
-        <div className="flex items-center gap-4 bg-white rounded-xl border border-gray-200
-                        shadow-sm p-5 opacity-50 cursor-not-allowed">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-            <Users className="w-5 h-5 text-blue-500" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900">Manajemen Pengguna</p>
-            <p className="text-xs text-gray-400 mt-0.5">Coming soon</p>
-          </div>
-        </div>
-      </div>
+  <Link
+    href="/superadmin/pembayaran"
+    className="flex items-center gap-4 bg-white rounded-xl border border-gray-200
+               shadow-sm p-5 hover:border-green-300 hover:shadow-md transition-all group"
+  >
+    <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center
+                    group-hover:bg-green-100 transition-colors flex-shrink-0">
+      <BanknoteIcon className="w-5 h-5 text-green-500" />
+    </div>
+    <div>
+      <p className="text-sm font-semibold text-gray-900">Konfirmasi Pembayaran</p>
+      <p className="text-xs text-gray-400 mt-0.5">
+        {pendingPayments.length > 0
+          ? `${pendingPayments.length} menunggu konfirmasi`
+          : "Tidak ada antrian saat ini"}
+      </p>
+    </div>
+    <ChevronRight className="w-4 h-4 text-gray-300 ml-auto group-hover:text-green-400
+                             transition-colors" />
+  </Link>
+
+  <div className="flex items-center gap-4 bg-white rounded-xl border border-gray-200
+                  shadow-sm p-5 opacity-50 cursor-not-allowed">
+    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+      <Users className="w-5 h-5 text-blue-500" />
+    </div>
+    <div>
+      <p className="text-sm font-semibold text-gray-900">Manajemen Pengguna</p>
+      <p className="text-xs text-gray-400 mt-0.5">Coming soon</p>
+    </div>
+  </div>
+</div>
 
     </div>
   );

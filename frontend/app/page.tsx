@@ -33,7 +33,7 @@ const STEPS = [
 
 const PLANS = [
   {
-    name: "RT Aktif", price: "Rp 450.000,-", period: "/tahun",
+    name: "RTMudah Reguler", price: "Rp 450.000,-", period: "/tahun",
     desc: "Untuk RT yang ingin fitur lengkap dan notifikasi otomatis",
     features: ["Hingga 200 KK", "Data & profil warga","Tagihan bulanan","Pengumuman","Laporan warga", "Notifikasi WhatsApp", "Analitik lengkap",'Export data utk Kelurahan', "1 admin"],
     cta: "Coba Gratis 7 Hari", href: "/register", featured: true,

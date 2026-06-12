@@ -72,4 +72,4 @@ export const formatSubscriptionStatus = (status: SubscriptionStatus["status"]): 
   return labels[status] ?? status;
 };
 
-export const ANNUAL_PRICE_IDR = 400_000;
+export const ANNUAL_PRICE_IDR = 450_000;

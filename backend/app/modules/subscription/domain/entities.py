@@ -38,7 +38,7 @@ class PaymentPlan(str, Enum):
 
 # ── Pricing constants ──────────────────────────────────────────────────────
 
-ANNUAL_PRICE_IDR = 400_000   # Rp 450.000/tahun — only plan
+ANNUAL_PRICE_IDR = 450_000   # Rp 450.000/tahun — only plan
 TRIAL_DAYS       = 7
 GRACE_DAYS       = 14
 

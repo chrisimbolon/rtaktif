@@ -41,7 +41,7 @@ const PLANS = [
   {
     name: "Pro RW", price: "Rp 149k", period: "/bulan",
     desc: "Untuk RW yang mengelola banyak RT sekaligus",
-    features: ["Warga tidak terbatas", "Semua fitur RT Aktif", "Laporan analitik", "Admin tidak terbatas", "Prioritas dukungan"],
+    features: ["Warga tidak terbatas", "Semua fitur RT Aktif", "Laporan analitik", "3 Admin per RT", "Prioritas dukungan"],
     cta: "Hubungi Kami", href: "mailto:hello@rtmudah.com", featured: false,
   },
 ];

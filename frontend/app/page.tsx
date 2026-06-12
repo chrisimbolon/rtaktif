@@ -40,7 +40,7 @@ const PLANS = [
   },
   {
     name: "RTMudah Pro", price: "Rp(akan diumumkan)", period: "",
-    desc: "Untuk RW yang mengelola banyak RT sekaligus",
+    desc: "Untuk RT yang ingin mengakses seluruh infrastruktur lingkungan",
     features: ["Warga tidak terbatas", "Semua fitur RT Aktif", "Laporan analitik", "3 Admin per RT"],
     cta: "Hubungi Kami", href: "mailto:hello@rtmudah.com", featured: false,
   },

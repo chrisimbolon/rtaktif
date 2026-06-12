@@ -275,46 +275,58 @@ export default function LandingPage() {
       </section>
 
       {/* ── PRICING ──────────────────────────────────────────────── */}
-      <section id="harga" className="py-16 sm:py-20 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto text-center">
-          <div className="text-xs font-bold text-green-700 tracking-widest uppercase mb-3">Harga</div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-4">
-            Transparan & <span className="text-green-700">Terjangkau</span>
-          </h2>
-          <p className="text-base sm:text-lg text-gray-500 max-w-md mx-auto mb-12">
-            Mulai gratis selama masa beta. Tidak ada biaya tersembunyi.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {PLANS.map((p) => (
-              <div key={p.name} className={`bg-white rounded-xl p-7 text-left relative ${p.featured ? "border-2 border-green-700 shadow-lg" : "border border-gray-200"}`}>
-                {p.featured && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-700 text-white px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap">
-                    Paling Populer
-                  </div>
-                )}
-                <div className="text-sm font-bold text-gray-500 mb-2">{p.name}</div>
-                <div className="text-3xl font-extrabold mb-1">
-                  {p.price}<span className="text-base font-medium text-gray-500">{p.period}</span>
-                </div>
-                <div className="text-sm text-gray-500 mb-5 pb-5 border-b border-gray-100">{p.desc}</div>
-                <ul className="space-y-2 mb-6">
-                  {p.features.map((f) => (
-                    <li key={f} className="text-sm text-gray-700 flex items-center gap-2">
-                      <span className="text-green-700 font-bold">✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link href={p.href} className={`block w-full py-3 rounded-lg font-bold text-sm text-center transition-colors ${p.featured ? "bg-green-700 text-white hover:bg-green-800" : "bg-white text-gray-900 border border-gray-200 hover:bg-gray-50"}`}>
-                  {p.cta}
-                </Link>
-              </div>
-            ))}
+      {/* ── PRICING ──────────────────────────────────────────────── */}
+<section id="harga" className="py-16 sm:py-20 px-4 sm:px-6">
+  <div className="max-w-5xl mx-auto text-center">
+    <div className="text-xs font-bold text-green-700 tracking-widest uppercase mb-3">Harga</div>
+    <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-4">
+      Transparan & <span className="text-green-700">Terjangkau</span>
+    </h2>
+    <p className="text-base sm:text-lg text-gray-500 max-w-md mx-auto mb-12">
+      Mulai gratis selama masa beta. Tidak ada biaya tersembunyi.
+    </p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto items-stretch">
+      {PLANS.map((p) => (
+        <div key={p.name} className={`bg-white rounded-xl p-7 text-left relative flex flex-col ${p.featured ? "border-2 border-green-700 shadow-lg" : "border border-gray-200"} ${!p.featured ? "opacity-75" : ""}`}>
+          {p.featured && (
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-700 text-white px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap">
+              Paling Populer
+            </div>
+          )}
+          {!p.featured && (
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gray-400 text-white px-4 py-1 rounded-full text-xs font-bold whitespace-nowrap">
+              Segera Hadir
+            </div>
+          )}
+          <div className="text-sm font-bold text-gray-500 mb-2">{p.name}</div>
+          <div className="text-3xl font-extrabold mb-1">
+            {p.price}<span className="text-base font-medium text-gray-500">{p.period}</span>
           </div>
-          <p className="text-xs text-gray-500 mt-8">
-            * Selama masa beta, semua fitur tersedia gratis. Harga di atas berlaku saat launch resmi.
-          </p>
+          <div className="text-sm text-gray-500 mb-5 pb-5 border-b border-gray-100">{p.desc}</div>
+          <ul className="space-y-2 mb-6 flex-1">
+            {p.features.map((f) => (
+              <li key={f} className="text-sm text-gray-700 flex items-center gap-2">
+                <span className="text-green-700 font-bold">✓</span> {f}
+              </li>
+            ))}
+          </ul>
+          {p.featured ? (
+            <Link href={p.href} className="block w-full py-3 rounded-lg font-bold text-sm text-center transition-colors bg-green-700 text-white hover:bg-green-800">
+              {p.cta}
+            </Link>
+          ) : (
+            <div className="block w-full py-3 rounded-lg font-bold text-sm text-center bg-gray-100 text-gray-400 cursor-not-allowed">
+              Segera Hadir
+            </div>
+          )}
         </div>
-      </section>
+      ))}
+    </div>
+    <p className="text-xs text-gray-500 mt-8">
+      * Selama masa beta, semua fitur tersedia gratis. Harga di atas berlaku saat launch resmi.
+    </p>
+  </div>
+</section>
 
       {/* ── CTA ──────────────────────────────────────────────────── */}
       <section className="bg-blue-900 text-white py-16 sm:py-20 px-4 sm:px-6 text-center">

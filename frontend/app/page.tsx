@@ -375,7 +375,7 @@ export default function LandingPage() {
               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">Kontak</h4>
               <ul className="space-y-2">
                 <li><a href="mailto:hello@rtmudah.com" className="text-sm hover:text-white transition-colors">hello@rtmudah.com</a></li>
-                <li><a href="https://wa.me/6281234567890" className="text-sm hover:text-white transition-colors">WhatsApp</a></li>
+                <li><a href="https://wa.me/0853-6763-1818" className="text-sm hover:text-white transition-colors">WhatsApp</a></li>
               </ul>
             </div>
           </div>

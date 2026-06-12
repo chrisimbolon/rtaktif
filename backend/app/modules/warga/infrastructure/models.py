@@ -119,3 +119,53 @@ class ResidentChangeLogModel(Base):
     changed_at:  Mapped[datetime] = mapped_column(
         TZDateTime, server_default=func.now(), nullable=False
     )
+
+class ResidentChangeRequestModel(Base):
+    """
+    Warga-proposed field changes awaiting Ketua RT approval.
+
+    One row per changed field. Resident data is NOT modified until
+    a request is approved — at which point the change is applied to
+    ResidentModel AND a corresponding ResidentChangeLogModel entry
+    is created (changed_by_role="warga").
+
+    status: pending | approved | rejected
+    """
+    __tablename__ = "resident_change_requests"
+    __table_args__ = (
+        Index("ix_change_requests_rt_status",      "rt_group_id", "status"),
+        Index("ix_change_requests_resident",       "resident_id", "created_at"),
+        Index("ix_change_requests_requested_by",   "requested_by", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    resident_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("residents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rt_group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    requested_by:      Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    requested_by_name: Mapped[str]       = mapped_column(String(255), nullable=False, server_default="")
+
+    field_name:  Mapped[str]      = mapped_column(String(50),  nullable=False)
+    field_label: Mapped[str]      = mapped_column(String(100), nullable=False, server_default="")
+    old_value:   Mapped[str|None] = mapped_column(Text, nullable=True)
+    new_value:   Mapped[str|None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+
+    reviewed_by:       Mapped[uuid.UUID|None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    reviewed_by_name:  Mapped[str|None]       = mapped_column(String(255), nullable=True)
+    reviewed_at:       Mapped[datetime|None]  = mapped_column(TZDateTime, nullable=True)
+    rejection_reason:  Mapped[str|None]       = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TZDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )

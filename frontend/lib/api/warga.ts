@@ -210,3 +210,56 @@ export const HUBUNGAN_KK_OPTIONS = [
   "KEPALA KELUARGA", "SUAMI", "ISTRI", "ANAK", "MENANTU",
   "CUCU", "ORANG TUA", "MERTUA", "SAUDARA", "PEMBANTU", "LAINNYA",
 ] as const;
+
+export interface ChangeRequestItem {
+  id:                string;
+  resident_id:       string;
+  resident_name:     string;
+  requested_by:      string;
+  requested_by_name: string;
+  field_name:        string;
+  field_label:       string;
+  old_value:         string | null;
+  new_value:         string | null;
+  status:            "pending" | "approved" | "rejected";
+  reviewed_by_name:  string | null;
+  reviewed_at:       string | null;
+  rejection_reason:  string | null;
+  created_at:        string;
+}
+
+export interface ReviewChangeRequestPayload {
+  action:            "approve" | "reject";
+  rejection_reason?: string;
+}
+
+export interface ReviewChangeRequestResponse {
+  message:    string;
+  request_id: string;
+}
+
+/**
+ * GET /warga/change-requests/pending
+ * Ketua RT review queue — all pending self-edit requests, oldest first.
+ */
+export const getPendingChangeRequests = async (): Promise<ChangeRequestItem[]> => {
+  const { data } = await apiClient.get<ChangeRequestItem[]>(
+    "/warga/change-requests/pending"
+  );
+  return data;
+};
+
+/**
+ * PATCH /warga/change-requests/{id}/review
+ * Approve or reject a single field-change request.
+ */
+export const reviewChangeRequest = async (
+  requestId: string,
+  payload:   ReviewChangeRequestPayload,
+): Promise<ReviewChangeRequestResponse> => {
+  const { data } = await apiClient.patch<ReviewChangeRequestResponse>(
+    `/warga/change-requests/${requestId}/review`,
+    payload,
+  );
+  return data;
+};

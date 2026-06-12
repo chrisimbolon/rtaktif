@@ -19,6 +19,7 @@ const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
   // ── Ketua RT pages ───────────────────────────────────────────────────────
   "/dashboard":               { title: "Dashboard",          subtitle: "Ringkasan RT Anda hari ini"              },
   "/warga":                   { title: "Data Warga",          subtitle: "Kelola data penduduk RT"                 },
+  "/persetujuan":             {title:  "Persetujuan Data Warga",subtitle: "Tinjau permintaan perubahan data dari warga" },
   "/tagihan":                 { title: "Tagihan & Iuran",     subtitle: "Kelola pembayaran bulanan"               },
   "/pengumuman":              { title: "Pengumuman",          subtitle: "Broadcast informasi ke warga"            },
   "/laporan":                 { title: "Laporan Warga",       subtitle: "Keluhan & laporan dari warga"            },

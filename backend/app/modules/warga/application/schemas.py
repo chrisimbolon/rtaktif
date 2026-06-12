@@ -109,3 +109,79 @@ class ChangeLogEntry(BaseModel):
     changed_by_role:  str
     resident_name:    str
     changed_at:       str          # ISO string
+
+class SubmitChangeRequestBody(BaseModel):
+    """
+    POST /warga/me/change-requests
+    All fields optional — only changed fields create a request.
+    Same shape as AdminUpdateResidentRequest, but warga-facing.
+    """
+    full_name:           Optional[str]   = None
+    phone:               Optional[str]   = None
+    nik:                 Optional[str]   = None
+    no_kk:               Optional[str]   = None
+    tanggal_lahir:       Optional[_date] = None
+    tempat_lahir:        Optional[str]   = None
+    jenis_kelamin:       Optional[str]   = None
+    agama:               Optional[str]   = None
+    pekerjaan:           Optional[str]   = None
+    status_kawin:        Optional[str]   = None
+    status_tinggal:      Optional[str]   = None
+    alamat_ktp:          Optional[str]   = None
+    pendidikan_terakhir: Optional[str]   = None
+
+    @field_validator(
+        "phone", "nik", "no_kk", "tempat_lahir", "jenis_kelamin", "agama",
+        "pekerjaan", "status_kawin", "status_tinggal", "alamat_ktp",
+        "pendidikan_terakhir", "full_name",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
+    @field_validator("tanggal_lahir", mode="before")
+    @classmethod
+    def empty_date_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+
+# ── Review (Ketua RT approve/reject) ───────────────────────────────────────────
+
+class ReviewChangeRequestBody(BaseModel):
+    """
+    PATCH /warga/change-requests/{id}/review
+    """
+    action:           str            # "approve" | "reject"
+    rejection_reason: Optional[str] = None
+
+
+# ── Responses ───────────────────────────────────────────────────────────────────
+
+class ChangeRequestItem(BaseModel):
+    """Single field-change request — used in both warga history + Ketua RT queue."""
+    id:                UUID
+    resident_id:       UUID
+    resident_name:     str
+    requested_by:      UUID
+    requested_by_name: str
+    field_name:        str
+    field_label:       str
+    old_value:         Optional[str]
+    new_value:         Optional[str]
+    status:            str
+    reviewed_by_name:  Optional[str]
+    reviewed_at:       Optional[str]
+    rejection_reason:  Optional[str]
+    created_at:        str
+
+
+class SubmitChangeRequestResponse(BaseModel):
+    """Returned after warga submits self-edit request."""
+    created_count: int
+    requests:       list[ChangeRequestItem]
+    message:        str

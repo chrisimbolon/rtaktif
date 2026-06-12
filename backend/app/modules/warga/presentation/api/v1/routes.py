@@ -1,4 +1,6 @@
 # warga/presentation/api/v1/routes.py
+import uuid as _uuid
+from datetime import datetime, timezone
 from uuid import UUID
 
 from app.core.database import get_db
@@ -7,12 +9,17 @@ from app.core.exceptions import EntityNotFoundError
 from app.modules.warga.application.schemas import (AddAnggotaRequest,
                                                    AdminUpdateResidentRequest,
                                                    ChangeLogEntry,
-                                                   RegisterResidentRequest)
+                                                   ChangeRequestItem,
+                                                   RegisterResidentRequest,
+                                                   ReviewChangeRequestBody,
+                                                   SubmitChangeRequestBody,
+                                                   SubmitChangeRequestResponse)
 from app.modules.warga.application.use_cases.register_resident import \
     RegisterResident
 from app.modules.warga.application.use_cases.verify_resident import \
     VerifyResident
-from app.modules.warga.infrastructure.models import ResidentModel
+from app.modules.warga.infrastructure.models import (
+    ResidentChangeLogModel, ResidentChangeRequestModel, ResidentModel)
 from app.modules.warga.infrastructure.repository import PgResidentRepository
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, select
@@ -722,3 +729,349 @@ async def get_resident_change_log(
         }
         for r in rows
     ]
+
+def _stringify(value) -> str | None:
+    """Convert any field value to string for storage in old_value/new_value."""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):  # date/datetime
+        return value.isoformat()
+    if hasattr(value, "value"):      # enum
+        return value.value
+    if isinstance(value, bool):
+        return "Ya" if value else "Tidak"
+    return str(value)
+
+
+def _change_request_to_item(r, resident_name: str) -> ChangeRequestItem:
+    return ChangeRequestItem(
+        id                = r.id,
+        resident_id       = r.resident_id,
+        resident_name     = resident_name,
+        requested_by      = r.requested_by,
+        requested_by_name = r.requested_by_name,
+        field_name        = r.field_name,
+        field_label       = r.field_label,
+        old_value         = r.old_value,
+        new_value         = r.new_value,
+        status            = r.status,
+        reviewed_by_name  = r.reviewed_by_name,
+        reviewed_at       = r.reviewed_at.isoformat() if r.reviewed_at else None,
+        rejection_reason  = r.rejection_reason,
+        created_at        = r.created_at.isoformat(),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /warga/me/change-requests
+# Warga submits proposed field changes — pending Ketua RT approval
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/warga/me/change-requests", response_model=SubmitChangeRequestResponse,
+              status_code=201, tags=["Warga"])
+async def submit_change_request(
+    body:         SubmitChangeRequestBody,
+    current_user: dict = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Warga proposes changes to their own profile. One pending request is
+    created per changed field. ResidentModel is NOT modified until a
+    Ketua RT approves each request via /warga/change-requests/{id}/review.
+    """
+    user_id   = _uuid.UUID(current_user["user_id"])
+    user_name = current_user.get("full_name", "")
+
+    repo     = PgResidentRepository(db)
+    resident = await repo.get_by_user_id(user_id)
+    if not resident:
+        raise HTTPException(status_code=404, detail="Data warga tidak ditemukan untuk akun ini")
+
+    # Existing pending fields for this resident — block duplicate submissions
+    existing_result = await db.execute(
+        select(ResidentChangeRequestModel.field_name).where(
+            ResidentChangeRequestModel.resident_id == resident.id,
+            ResidentChangeRequestModel.status == "pending",
+        )
+    )
+    pending_fields = {row[0] for row in existing_result.all()}
+
+    payload = body.model_dump(exclude_unset=True)
+    if not payload:
+        raise HTTPException(status_code=422, detail="Tidak ada perubahan yang diajukan")
+
+    created: list[ResidentChangeRequestModel] = []
+    skipped: list[str] = []
+
+    for field_name, new_value in payload.items():
+        if field_name not in FIELD_LABELS:
+            continue
+
+        if field_name in pending_fields:
+            skipped.append(field_name)
+            continue
+
+        old_str = _stringify(getattr(resident, field_name, None))
+        new_str = _stringify(new_value)
+
+        if old_str == new_str:
+            continue  # no-op
+
+        req = ResidentChangeRequestModel(
+            id                = _uuid.uuid4(),
+            resident_id       = resident.id,
+            rt_group_id       = resident.rt_group_id,
+            requested_by      = user_id,
+            requested_by_name = user_name,
+            field_name        = field_name,
+            field_label       = FIELD_LABELS[field_name],
+            old_value         = old_str,
+            new_value         = new_str,
+            status            = "pending",
+        )
+        db.add(req)
+        created.append(req)
+
+    if not created:
+        msg = (
+            "Semua field sudah memiliki permintaan yang menunggu persetujuan"
+            if skipped else
+            "Tidak ada perubahan terdeteksi dari data saat ini"
+        )
+        return SubmitChangeRequestResponse(created_count=0, requests=[], message=msg)
+
+    await db.commit()
+    for r in created:
+        await db.refresh(r)
+
+    msg = f"{len(created)} permintaan perubahan diajukan, menunggu persetujuan Ketua RT"
+    if skipped:
+        msg += f" ({len(skipped)} field dilewati karena sudah ada permintaan tertunda)"
+
+    return SubmitChangeRequestResponse(
+        created_count = len(created),
+        requests      = [_change_request_to_item(r, resident.full_name) for r in created],
+        message       = msg,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /warga/me/change-requests
+# Warga views own request history
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/warga/me/change-requests", response_model=list[ChangeRequestItem], tags=["Warga"])
+async def get_my_change_requests(
+    current_user: dict = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Returns all change requests submitted by the logged-in warga, newest first."""
+    user_id = _uuid.UUID(current_user["user_id"])
+
+    repo     = PgResidentRepository(db)
+    resident = await repo.get_by_user_id(user_id)
+    if not resident:
+        raise HTTPException(status_code=404, detail="Data warga tidak ditemukan untuk akun ini")
+
+    result = await db.execute(
+        select(ResidentChangeRequestModel)
+        .where(ResidentChangeRequestModel.resident_id == resident.id)
+        .order_by(desc(ResidentChangeRequestModel.created_at))
+    )
+    rows = result.scalars().all()
+    return [_change_request_to_item(r, resident.full_name) for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /warga/change-requests/pending
+# Ketua RT review queue — all pending self-edit requests for their RT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/warga/change-requests/pending", response_model=list[ChangeRequestItem], tags=["Warga"])
+async def get_pending_change_requests(
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """Returns all pending self-edit requests for the Ketua RT's RT group, oldest first."""
+    from app.modules.iam.infrastructure.models import RTGroupModel
+
+    user_id = _uuid.UUID(current_user["user_id"])
+
+    rt_result = await db.execute(
+        select(RTGroupModel).where(RTGroupModel.admin_user_id == user_id)
+    )
+    rt_group = rt_result.scalar_one_or_none()
+    if not rt_group:
+        raise HTTPException(status_code=404, detail="RT group tidak ditemukan")
+
+    result = await db.execute(
+        select(ResidentChangeRequestModel, ResidentModel.full_name)
+        .join(ResidentModel, ResidentChangeRequestModel.resident_id == ResidentModel.id)
+        .where(
+            ResidentChangeRequestModel.rt_group_id == rt_group.id,
+            ResidentChangeRequestModel.status == "pending",
+        )
+        .order_by(ResidentChangeRequestModel.created_at.asc())
+    )
+    rows = result.all()
+    return [_change_request_to_item(r, resident_name) for r, resident_name in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PATCH /warga/change-requests/{request_id}/review
+# Ketua RT approve or reject a single field-change request
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.patch("/warga/change-requests/{request_id}/review", tags=["Warga"])
+async def review_change_request(
+    request_id:   UUID,
+    body:         ReviewChangeRequestBody,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Approve or reject a warga's proposed field change.
+
+    On approve:
+      1. Apply new_value to ResidentModel
+      2. If field is full_name or phone — ALSO apply to UserModel
+         (keeps users table and residents table in sync, replicating
+         the dual-write that PATCH /users/me/profile used to do)
+      3. Write entry to resident_change_logs (changed_by_role="warga")
+      4. Mark request approved
+
+    On reject:
+      1. Mark request rejected with reason
+      2. Nothing is modified
+    """
+    from app.modules.iam.infrastructure.models import RTGroupModel, UserModel
+    from app.modules.iam.infrastructure.repository import PgUserRepository
+
+    if body.action not in ("approve", "reject"):
+        raise HTTPException(status_code=422, detail="Action harus 'approve' atau 'reject'")
+    if body.action == "reject" and not body.rejection_reason:
+        raise HTTPException(status_code=422, detail="rejection_reason wajib diisi saat menolak")
+
+    admin_id   = _uuid.UUID(current_user["user_id"])
+    admin_name = current_user.get("full_name", "")
+
+    rt_result = await db.execute(
+        select(RTGroupModel).where(RTGroupModel.admin_user_id == admin_id)
+    )
+    rt_group = rt_result.scalar_one_or_none()
+    if not rt_group:
+        raise HTTPException(status_code=404, detail="RT group tidak ditemukan")
+
+    req = await db.get(ResidentChangeRequestModel, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Permintaan tidak ditemukan")
+    if req.rt_group_id != rt_group.id:
+        raise HTTPException(status_code=403, detail="Permintaan ini bukan milik RT Anda")
+    if req.status != "pending":
+        raise HTTPException(status_code=409,
+            detail=f"Permintaan sudah {req.status}, tidak bisa direview ulang")
+
+    now = datetime.now(timezone.utc)
+
+    if body.action == "reject":
+        req.status           = "rejected"
+        req.reviewed_by      = admin_id
+        req.reviewed_by_name = admin_name
+        req.reviewed_at      = now
+        req.rejection_reason = body.rejection_reason
+        await db.commit()
+        return {"message": "Permintaan ditolak", "request_id": str(request_id)}
+
+    # ── APPROVE ──────────────────────────────────────────────────────────
+    resident = await db.get(ResidentModel, req.resident_id)
+    if not resident:
+        raise HTTPException(status_code=404, detail="Data warga tidak ditemukan")
+
+    # Coerce stored string back to correct type for date fields
+    new_value_raw: object = req.new_value
+    if req.field_name == "tanggal_lahir" and req.new_value:
+        from datetime import date as _date
+        new_value_raw = _date.fromisoformat(req.new_value)
+
+    # Coerce enum fields back via domain entities
+    if req.field_name in (
+        "jenis_kelamin", "agama", "pekerjaan", "status_kawin", "status_tinggal",
+        "status_keluarga", "pendidikan_terakhir", "kewarganegaraan", "hubungan_dengan_kk",
+    ) and req.new_value is not None:
+        from app.modules.warga.domain.entities import (Agama, HubunganDenganKK,
+                                                       JenisKelamin,
+                                                       Kewarganegaraan,
+                                                       Pekerjaan,
+                                                       PendidikanTerakhir,
+                                                       StatusKawin,
+                                                       StatusKeluarga,
+                                                       StatusTinggal)
+        enum_map = {
+            "jenis_kelamin":       JenisKelamin,
+            "agama":               Agama,
+            "pekerjaan":           Pekerjaan,
+            "status_kawin":        StatusKawin,
+            "status_tinggal":      StatusTinggal,
+            "status_keluarga":     StatusKeluarga,
+            "pendidikan_terakhir": PendidikanTerakhir,
+            "kewarganegaraan":     Kewarganegaraan,
+            "hubungan_dengan_kk":  HubunganDenganKK,
+        }
+        try:
+            new_value_raw = enum_map[req.field_name](req.new_value)
+        except ValueError:
+            raise HTTPException(status_code=422,
+                detail=f"Nilai '{req.new_value}' tidak valid untuk field {req.field_name}")
+
+    # ── full_name / phone — special case: also sync UserModel ────────────
+    if req.field_name == "phone":
+        # Uniqueness check — mirrors old PATCH /users/me/profile behaviour
+        user_repo = PgUserRepository(db)
+        existing  = await user_repo.get_by_phone(req.new_value)
+        if existing and existing.id != req.requested_by:
+            raise HTTPException(
+                status_code=409,
+                detail="Nomor HP sudah digunakan akun lain — permintaan tidak dapat disetujui"
+            )
+
+    if req.field_name in ("full_name", "phone"):
+        user = await db.get(UserModel, req.requested_by)
+        if user:
+            setattr(user, req.field_name, new_value_raw)
+
+    # Capture current value as old_value (resident may have changed since request)
+    log_old_value = _stringify(getattr(resident, req.field_name, None))
+
+    # Apply via domain entity — keeps update_profile() validation in one place
+    resident.update_profile(**{req.field_name: new_value_raw})
+
+    repo = PgResidentRepository(db)
+    await repo.save(resident)
+
+    # Audit log — attributed to the warga who requested it
+    db.add(ResidentChangeLogModel(
+        id              = _uuid.uuid4(),
+        resident_id     = resident.id,
+        rt_group_id     = req.rt_group_id,
+        changed_by      = req.requested_by,
+        changed_by_role = "warga",
+        changed_by_name = req.requested_by_name,
+        resident_name   = resident.full_name,
+        field_name      = req.field_name,
+        field_label     = req.field_label,
+        old_value       = log_old_value,
+        new_value       = req.new_value,
+    ))
+
+    req.status           = "approved"
+    req.reviewed_by      = admin_id
+    req.reviewed_by_name = admin_name
+    req.reviewed_at      = now
+
+    await db.commit()
+
+    return {
+        "message":    f"Perubahan {req.field_label} disetujui dan diterapkan",
+        "request_id": str(request_id),
+    }
+

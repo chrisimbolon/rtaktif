@@ -183,14 +183,27 @@ async def update_my_profile(
     rich fields (NIK, tanggal_lahir, agama, etc.) in residents table.
     """
     from app.modules.warga.domain.entities import (Agama, HubunganDenganKK,
-                                                   JenisKelamin, Kewarganegaraan,
-                                                   PendidikanTerakhir, Pekerjaan,
+                                                   JenisKelamin,
+                                                   Kewarganegaraan, Pekerjaan,
+                                                   PendidikanTerakhir,
                                                    StatusKawin, StatusKeluarga,
                                                    StatusTinggal)
     from app.modules.warga.infrastructure.repository import \
         PgResidentRepository
 
     user_id = UUID(current_user["user_id"])
+
+    if current_user.get("role") == "warga":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Warga tidak dapat mengubah profil secara langsung. "
+                "Gunakan fitur 'Ajukan Perubahan Data' — perubahan akan "
+                "ditinjau oleh Ketua RT."
+            ),
+        )
+
+    
 
     # ── 1. Update users table ─────────────────────────────────────
     repo = PgUserRepository(db)

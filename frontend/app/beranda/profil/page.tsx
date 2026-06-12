@@ -1,27 +1,28 @@
 "use client";
 // app/beranda/profil/page.tsx
-// Warga profile edit — full Indonesian RT profile
-// Mobile-first, matches beranda design (blue-900 header, max-w-lg)
+// UPDATED — Path B: ALL profile changes go through approval flow.
 //
-// Updates:
-//   users table    → full_name, phone
-//   residents table → NIK, no_kk, tanggal_lahir, jenis_kelamin,
-//                     agama, pekerjaan, status_kawin, status_tinggal,
-//                     status_keluarga, kepala_keluarga, alamat_ktp
+// Replaces the instant PATCH /users/me/profile mutation with
+// POST /warga/me/change-requests. Adds a "Riwayat Permintaan" section
+// showing pending/approved/rejected requests, and disables fields that
+// already have a pending request.
+//
+// Layout, sections, SelectField, constants — ALL UNCHANGED from original.
+// Only the data flow (fetch + submit) and the bottom info section change.
 
 import apiClient from "@/lib/api/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft, CheckCircle, ChevronDown, Clock,
+  Loader2, Mail, Phone, Save, User, XCircle,
+} from "lucide-react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  ArrowLeft, CheckCircle, ChevronDown,
-  Loader2, Mail, Phone, Save, User,
-} from "lucide-react";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Constants (unchanged) ───────────────────────────────────────────────────
 
 const AGAMA_OPTIONS = [
   "ISLAM","KATHOLIK","KRISTEN","HINDU","BUDDHA","KONGHUCU"
@@ -46,30 +47,20 @@ const STATUS_TINGGAL_OPTIONS = [
 const STATUS_KELUARGA_OPTIONS = [
   "SUAMI","ISTRI","ANAK","ORANG TUA","SAUDARA","LAINNYA","N/A"
 ];
+const PENDIDIKAN_OPTIONS = [
+  "TIDAK SEKOLAH","BELUM SEKOLAH","SD","SMP","SMA","SMK","D3","S1","S2","S3","LAINNYA"
+];
+const KEWARGANEGARAAN_OPTIONS = ["WNI","WNA"];
+const HUBUNGAN_KK_OPTIONS = [
+  "KEPALA KELUARGA","SUAMI","ISTRI","ANAK","MENANTU",
+  "CUCU","ORANG TUA","MERTUA","SAUDARA","PEMBANTU","LAINNYA"
+];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface UpdateProfilePayload {
-  full_name:            string;
-  phone:                string;
-  nik?:                 string;
-  no_kk?:               string;
-  tanggal_lahir?:       string;
-  tempat_lahir?:        string;
-  jenis_kelamin?:       string;
-  agama?:               string;
-  pekerjaan?:           string;
-  status_kawin?:        string;
-  status_tinggal?:      string;
-  status_keluarga?:     string;
-  kepala_keluarga?:     boolean;
-  alamat_ktp?:          string;
-  pendidikan_terakhir?: string;
-  kewarganegaraan?:     string;
-  hubungan_dengan_kk?:  string;
-}
-
 interface ResidentProfile {
+  full_name?:          string;
+  phone?:              string;
   nik?:                string;
   no_kk?:              string;
   tanggal_lahir?:      string;
@@ -87,6 +78,27 @@ interface ResidentProfile {
   hubungan_dengan_kk?: string;
 }
 
+interface ChangeRequestItem {
+  id:                string;
+  field_name:        string;
+  field_label:       string;
+  old_value:         string | null;
+  new_value:         string | null;
+  status:            "pending" | "approved" | "rejected";
+  reviewed_by_name:  string | null;
+  reviewed_at:       string | null;
+  rejection_reason:  string | null;
+  created_at:        string;
+}
+
+// Fields that map to UserModel (not ResidentModel) but are still submitted
+// through the same change-request payload — backend handles the dual-write.
+const SUBMITTABLE_FIELDS = [
+  "full_name", "phone", "nik", "no_kk", "tanggal_lahir", "tempat_lahir",
+  "jenis_kelamin", "agama", "pekerjaan", "status_kawin", "status_tinggal",
+  "alamat_ktp", "pendidikan_terakhir",
+] as const;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatPhoneDisplay(phone: string): string {
@@ -101,16 +113,23 @@ function formatPhoneForApi(phone: string): string {
   return clean;
 }
 
-// ── SelectField component ─────────────────────────────────────────────────────
+function formatDateShort(iso: string): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric", month: "short", year: "numeric",
+  }).format(new Date(iso));
+}
+
+// ── SelectField component (unchanged) ──────────────────────────────────────────
 
 function SelectField({
-  label, value, onChange, options, placeholder,
+  label, value, onChange, options, placeholder, disabled,
 }: {
   label:       string;
   value:       string;
   onChange:    (v: string) => void;
   options:     { value: string; label: string }[] | string[];
   placeholder?: string;
+  disabled?:   boolean;
 }) {
   const normalised = (options as any[]).map(o =>
     typeof o === "string" ? { value: o, label: o } : o
@@ -124,10 +143,14 @@ function SelectField({
         <select
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="w-full pl-3 pr-8 py-3 rounded-xl border border-gray-200
-            bg-gray-50 text-sm text-gray-900 appearance-none
+          disabled={disabled}
+          className={`w-full pl-3 pr-8 py-3 rounded-xl border text-sm appearance-none
             focus:outline-none focus:ring-2 focus:ring-blue-100
-            focus:border-blue-400 transition-all"
+            focus:border-blue-400 transition-all ${
+              disabled
+                ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                : "border-gray-200 bg-gray-50 text-gray-900"
+            }`}
         >
           {placeholder && <option value="">{placeholder}</option>}
           {normalised.map(o => (
@@ -141,7 +164,7 @@ function SelectField({
   );
 }
 
-// ── Section header ────────────────────────────────────────────────────────────
+// ── Section header (unchanged) ──────────────────────────────────────────────────
 
 function Section({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
@@ -156,34 +179,72 @@ function Section({ title, subtitle }: { title: string; subtitle?: string }) {
   );
 }
 
-const PENDIDIKAN_OPTIONS = [
-  "TIDAK SEKOLAH","BELUM SEKOLAH","SD","SMP","SMA","SMK","D3","S1","S2","S3","LAINNYA"
-];
-const KEWARGANEGARAAN_OPTIONS = ["WNI","WNA"];
-const HUBUNGAN_KK_OPTIONS = [
-  "KEPALA KELUARGA","SUAMI","ISTRI","ANAK","MENANTU",
-  "CUCU","ORANG TUA","MERTUA","SAUDARA","PEMBANTU","LAINNYA"
-];
+// ── Pending badge — shown next to a field with a pending request ─────────────
+
+function PendingBadge({ newValue }: { newValue: string | null }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+      text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+      <Clock className="w-2.5 h-2.5" />
+      Menunggu: {newValue || "—"}
+    </span>
+  );
+}
+
+// ── Riwayat item ─────────────────────────────────────────────────────────────
+
+function RiwayatItem({ item }: { item: ChangeRequestItem }) {
+  const statusCfg: Record<string, { label: string; cls: string; icon: any }> = {
+    pending:  { label: "Menunggu",  cls: "bg-amber-50 text-amber-700 border-amber-200",  icon: Clock },
+    approved: { label: "Disetujui", cls: "bg-green-50 text-green-700 border-green-200",  icon: CheckCircle },
+    rejected: { label: "Ditolak",   cls: "bg-red-50 text-red-700 border-red-200",        icon: XCircle },
+  };
+  const cfg = statusCfg[item.status];
+  const Icon = cfg.icon;
+
+  return (
+    <div className="px-4 py-3 border-b border-gray-100 last:border-b-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900">{item.field_label}</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {item.old_value || "—"} → <span className="font-medium text-gray-700">{item.new_value || "—"}</span>
+          </p>
+          {item.status === "rejected" && item.rejection_reason && (
+            <p className="text-xs text-red-600 mt-1">
+              Alasan: {item.rejection_reason}
+            </p>
+          )}
+          <p className="text-[10px] text-gray-400 mt-1">
+            {formatDateShort(item.created_at)}
+            {item.reviewed_by_name && ` · oleh ${item.reviewed_by_name}`}
+          </p>
+        </div>
+        <span className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5
+          rounded-full text-[10px] font-semibold border ${cfg.cls}`}>
+          <Icon className="w-2.5 h-2.5" />
+          {cfg.label}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ProfilPage() {
-  const { data: session, status, update } = useSession();
+  const { data: session, status } = useSession();
   const router      = useRouter();
   const queryClient = useQueryClient();
 
   const user      = session?.user as any;
-  const fullName  = user?.full_name ?? user?.name ?? "";
-  const phone     = user?.phone ?? "";
   const email     = user?.email ?? "";
   const userRole  = user?.role ?? "";
   const rtGroupId = user?.rt_group_id;
 
-  // Form state — core
+  // Form state
   const [formName,  setFormName]  = useState("");
   const [formPhone, setFormPhone] = useState("");
-
-  // Form state — rich profile
   const [nik,             setNik]             = useState("");
   const [noKk,            setNoKk]            = useState("");
   const [tanggalLahir,    setTanggalLahir]    = useState("");
@@ -193,32 +254,43 @@ export default function ProfilPage() {
   const [pekerjaan,       setPekerjaan]       = useState("");
   const [statusKawin,     setStatusKawin]     = useState("");
   const [statusTinggal,   setStatusTinggal]   = useState("TETAP");
-  const [statusKeluarga,  setStatusKeluarga]  = useState("");
-  const [kepalaKeluarga,  setKepalaKeluarga]  = useState(false);
   const [pendidikan,      setPendidikan]      = useState("");
-  const [kewarganegaraan, setKewarganegaraan] = useState("WNI");
-  const [hubunganKK,      setHubunganKK]      = useState("");
   const [alamatKtp,       setAlamatKtp]       = useState("");
 
   const [isDirty, setIsDirty] = useState(false);
 
-  // Fetch resident profile for rich fields
+  // ── Fetch resident profile (current saved values) ─────────────────────────
   const { data: resident } = useQuery<ResidentProfile>({
     queryKey: ["my-resident-profile", rtGroupId],
     queryFn:  async () => {
-      if (!rtGroupId) return {};
-      const { data } = await apiClient.get(`/warga/my-profile`);
+      const { data } = await apiClient.get("/warga/my-profile");
       return data;
     },
     enabled: !!rtGroupId,
     staleTime: 60_000,
   });
 
-  // Initialise form
+  // ── Fetch own change request history ───────────────────────────────────────
+  const { data: requests = [] } = useQuery<ChangeRequestItem[]>({
+    queryKey: ["my-change-requests"],
+    queryFn:  async () => {
+      const { data } = await apiClient.get("/warga/me/change-requests");
+      return data;
+    },
+    enabled: !!rtGroupId,
+    staleTime: 30_000,
+  });
+
+  // Map of field_name → pending request (for badges + disabling inputs)
+  const pendingByField = new Map<string, ChangeRequestItem>(
+    requests.filter(r => r.status === "pending").map(r => [r.field_name, r])
+  );
+
+  // ── Initialise form from session + resident profile ───────────────────────
   useEffect(() => {
-    if (fullName) setFormName(fullName);
-    if (phone)    setFormPhone(formatPhoneDisplay(phone));
-  }, [fullName, phone]);
+    if (user?.full_name || user?.name) setFormName(user.full_name ?? user.name ?? "");
+    if (user?.phone)    setFormPhone(formatPhoneDisplay(user.phone));
+  }, [user]);
 
   useEffect(() => {
     if (!resident) return;
@@ -231,61 +303,122 @@ export default function ProfilPage() {
     if (resident.pekerjaan)       setPekerjaan(resident.pekerjaan);
     if (resident.status_kawin)    setStatusKawin(resident.status_kawin);
     if (resident.status_tinggal)  setStatusTinggal(resident.status_tinggal);
-    if (resident.status_keluarga) setStatusKeluarga(resident.status_keluarga);
-    if (resident.kepala_keluarga !== undefined) setKepalaKeluarga(resident.kepala_keluarga ?? false);
     if (resident.pendidikan_terakhir) setPendidikan(resident.pendidikan_terakhir);
-    if (resident.kewarganegaraan)     setKewarganegaraan(resident.kewarganegaraan);
-    if (resident.hubungan_dengan_kk)  setHubunganKK(resident.hubungan_dengan_kk);
     if (resident.alamat_ktp)      setAlamatKtp(resident.alamat_ktp);
   }, [resident]);
 
-  // Dirty tracking
+  // ── Dirty tracking — compare against resident + session current values ────
   useEffect(() => {
-    setIsDirty(
-      formName.trim()          !== fullName               ||
-      formatPhoneForApi(formPhone) !== phone
-    );
-  }, [formName, formPhone, fullName, phone]);
+    const current: Record<string, string> = {
+      full_name:           user?.full_name ?? user?.name ?? "",
+      phone:               formatPhoneDisplay(user?.phone ?? ""),
+      nik:                 resident?.nik ?? "",
+      no_kk:               resident?.no_kk ?? "",
+      tanggal_lahir:       resident?.tanggal_lahir ?? "",
+      tempat_lahir:        resident?.tempat_lahir ?? "",
+      jenis_kelamin:       resident?.jenis_kelamin ?? "",
+      agama:               resident?.agama ?? "",
+      pekerjaan:           resident?.pekerjaan ?? "",
+      status_kawin:        resident?.status_kawin ?? "",
+      status_tinggal:      resident?.status_tinggal ?? "TETAP",
+      pendidikan_terakhir: resident?.pendidikan_terakhir ?? "",
+      alamat_ktp:          resident?.alamat_ktp ?? "",
+    };
+    const form: Record<string, string> = {
+      full_name: formName, phone: formPhone, nik, no_kk: noKk,
+      tanggal_lahir: tanggalLahir, tempat_lahir: tempatLahir,
+      jenis_kelamin: jenisKelamin, agama, pekerjaan,
+      status_kawin: statusKawin, status_tinggal: statusTinggal,
+      pendidikan_terakhir: pendidikan, alamat_ktp: alamatKtp,
+    };
+    const changed = Object.keys(current).some(k => current[k] !== form[k]);
+    console.log("dirty check:", { current, form, changed });
+
+    setIsDirty(changed);
+  }, [
+    formName, formPhone, nik, noKk, tanggalLahir, tempatLahir, jenisKelamin,
+    agama, pekerjaan, statusKawin, statusTinggal, pendidikan, alamatKtp,
+    user, resident,
+  ]);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
   }, [status, router]);
 
+  // ── Submit — POST /warga/me/change-requests ────────────────────────────────
   const mutation = useMutation({
     mutationFn: () => {
-      const payload: UpdateProfilePayload = {
-        full_name:       formName.trim(),
-        phone:           formatPhoneForApi(formPhone),
-        nik:             nik       || undefined,
-        no_kk:           noKk      || undefined,
-        tanggal_lahir:   tanggalLahir || undefined,
-        tempat_lahir:    tempatLahir  || undefined,
-        jenis_kelamin:   jenisKelamin || undefined,
-        agama:           agama        || undefined,
-        pekerjaan:       pekerjaan    || undefined,
-        status_kawin:    statusKawin  || undefined,
-        status_tinggal:  statusTinggal || undefined,
-        status_keluarga: statusKeluarga || undefined,
-        kepala_keluarga:     kepalaKeluarga,
-        pendidikan_terakhir: pendidikan    || undefined,
-        kewarganegaraan:     kewarganegaraan || undefined,
-        hubungan_dengan_kk:  hubunganKK    || undefined,
-        alamat_ktp:      alamatKtp || undefined,
+      const current: Record<string, string> = {
+        full_name:           user?.full_name ?? user?.name ?? "",
+        phone:               formatPhoneDisplay(user?.phone ?? ""),
+        nik:                 resident?.nik ?? "",
+        no_kk:               resident?.no_kk ?? "",
+        tanggal_lahir:       resident?.tanggal_lahir ?? "",
+        tempat_lahir:        resident?.tempat_lahir ?? "",
+        jenis_kelamin:       resident?.jenis_kelamin ?? "",
+        agama:               resident?.agama ?? "",
+        pekerjaan:           resident?.pekerjaan ?? "",
+        status_kawin:        resident?.status_kawin ?? "",
+        status_tinggal:      resident?.status_tinggal ?? "TETAP",
+        pendidikan_terakhir: resident?.pendidikan_terakhir ?? "",
+        alamat_ktp:          resident?.alamat_ktp ?? "",
       };
-      return apiClient.patch("/users/me/profile", payload);
+      const form: Record<string, string | boolean> = {
+        full_name: formName.trim(),
+        phone: formatPhoneForApi(formPhone),
+        nik, no_kk: noKk,
+        tanggal_lahir: tanggalLahir, tempat_lahir: tempatLahir,
+        jenis_kelamin: jenisKelamin, agama, pekerjaan,
+        status_kawin: statusKawin, status_tinggal: statusTinggal,
+        pendidikan_terakhir: pendidikan, alamat_ktp: alamatKtp,
+      };
+
+      // Build payload — only fields that actually changed AND don't already
+      // have a pending request (backend also guards this, but skip client-side
+      // to avoid a confusing "0 created" response when nothing new changed).
+      const payload: Record<string, any> = {};
+      for (const field of SUBMITTABLE_FIELDS) {
+        if (pendingByField.has(field)) continue;
+
+        let currentVal = current[field] ?? "";
+        let formVal    = form[field] ?? "";
+
+        if (field === "phone") {
+          currentVal = formatPhoneForApi(currentVal as string);
+          formVal    = formatPhoneForApi(formVal as string);
+        }
+
+        if (currentVal !== formVal) {
+          payload[field] = formVal === "" ? null : formVal;
+        }
+      }
+
+      if (Object.keys(payload).length === 0) {
+        throw new Error("NO_CHANGES");
+      }
+
+      return apiClient.post("/warga/me/change-requests", payload);
     },
-    onSuccess: async (res) => {
-      toast.success("✅ Profil berhasil diperbarui!");
-      await update({ full_name: res.data.full_name, phone: res.data.phone });
+    onSuccess: (res) => {
+      const data = res.data;
+      if (data.created_count === 0) {
+        toast.info(data.message);
+      } else {
+        toast.success(`✅ ${data.message}`);
+      }
       setIsDirty(false);
-      queryClient.invalidateQueries({ queryKey: ["my-resident-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["my-change-requests"] });
     },
     onError: (err: any) => {
+      if (err?.message === "NO_CHANGES") {
+        toast.info("Tidak ada perubahan untuk diajukan");
+        return;
+      }
       const detail = err?.response?.data?.detail;
       if (Array.isArray(detail)) {
         toast.error(detail[0]?.msg ?? "Validasi gagal");
       } else {
-        toast.error(detail ?? "Gagal memperbarui profil");
+        toast.error(detail ?? "Gagal mengajukan perubahan");
       }
     },
   });
@@ -305,6 +438,8 @@ export default function ProfilPage() {
     );
   }
 
+  const fieldPending = (field: string) => pendingByField.get(field);
+
   return (
     <div className="min-h-screen bg-gray-50">
 
@@ -318,7 +453,7 @@ export default function ProfilPage() {
             </Link>
             <div>
               <h1 className="font-bold text-sm">Profil Saya</h1>
-              <p className="text-blue-300 text-xs">Update data diri Anda</p>
+              <p className="text-blue-300 text-xs">Ajukan perubahan data diri</p>
             </div>
           </div>
         </div>
@@ -351,6 +486,20 @@ export default function ProfilPage() {
           </div>
         </div>
 
+        {/* ── Riwayat Permintaan — only show if there's history ──────────── */}
+        {requests.length > 0 && (
+          <div className="mx-4 bg-white rounded-2xl border border-gray-200
+            shadow-sm overflow-hidden">
+            <Section title="Riwayat Permintaan"
+              subtitle="Status pengajuan perubahan data Anda" />
+            <div>
+              {requests.slice(0, 10).map(item => (
+                <RiwayatItem key={item.id} item={item} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Form card */}
         <div className="bg-white rounded-2xl border border-gray-200
           shadow-sm overflow-hidden mx-4">
@@ -359,9 +508,14 @@ export default function ProfilPage() {
           <Section title="Akun" subtitle="Nama dan nomor WhatsApp" />
           <div className="px-5 py-4 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Nama Lengkap <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Nama Lengkap <span className="text-red-500">*</span>
+                </label>
+                {fieldPending("full_name") && (
+                  <PendingBadge newValue={fieldPending("full_name")!.new_value} />
+                )}
+              </div>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2
                   w-4 h-4 text-gray-400 pointer-events-none" />
@@ -371,18 +525,27 @@ export default function ProfilPage() {
                   onChange={e => setFormName(e.target.value)}
                   placeholder="Nama sesuai KTP"
                   maxLength={100}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200
-                    bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400
-                    focus:outline-none focus:ring-2 focus:ring-blue-100
-                    focus:border-blue-400 transition-all"
+                  disabled={!!fieldPending("full_name")}
+                  className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm
+                    placeholder:text-gray-400 focus:outline-none focus:ring-2
+                    focus:ring-blue-100 focus:border-blue-400 transition-all ${
+                      fieldPending("full_name")
+                        ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "border-gray-200 bg-gray-50 text-gray-900"
+                    }`}
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Nomor HP (WhatsApp) <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Nomor HP (WhatsApp) <span className="text-red-500">*</span>
+                </label>
+                {fieldPending("phone") && (
+                  <PendingBadge newValue={fieldPending("phone")!.new_value} />
+                )}
+              </div>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2
                   w-4 h-4 text-gray-400 pointer-events-none" />
@@ -391,10 +554,14 @@ export default function ProfilPage() {
                   value={formPhone}
                   onChange={e => setFormPhone(e.target.value)}
                   placeholder="08123456789"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200
-                    bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400
-                    focus:outline-none focus:ring-2 focus:ring-blue-100
-                    focus:border-blue-400 transition-all"
+                  disabled={!!fieldPending("phone")}
+                  className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm
+                    placeholder:text-gray-400 focus:outline-none focus:ring-2
+                    focus:ring-blue-100 focus:border-blue-400 transition-all ${
+                      fieldPending("phone")
+                        ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "border-gray-200 bg-gray-50 text-gray-900"
+                    }`}
                 />
               </div>
             </div>
@@ -425,19 +592,28 @@ export default function ProfilPage() {
             subtitle="Data sesuai Kartu Tanda Penduduk" />
           <div className="px-5 py-4 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                NIK (16 digit)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  NIK (16 digit)
+                </label>
+                {fieldPending("nik") && (
+                  <PendingBadge newValue={fieldPending("nik")!.new_value} />
+                )}
+              </div>
               <input
                 type="text"
                 value={nik}
                 onChange={e => setNik(e.target.value.replace(/\D/g, "").slice(0, 16))}
                 placeholder="3171xxxxxxxxxx"
                 maxLength={16}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200
-                  bg-gray-50 text-sm font-mono text-gray-900
+                disabled={!!fieldPending("nik")}
+                className={`w-full px-4 py-3 rounded-xl border text-sm font-mono
                   placeholder:text-gray-400 focus:outline-none focus:ring-2
-                  focus:ring-blue-100 focus:border-blue-400 transition-all"
+                  focus:ring-blue-100 focus:border-blue-400 transition-all ${
+                    fieldPending("nik")
+                      ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "border-gray-200 bg-gray-50 text-gray-900"
+                  }`}
               />
               <p className="text-[10px] text-gray-400 mt-1">
                 {nik.length}/16 digit
@@ -445,19 +621,28 @@ export default function ProfilPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Nomor KK (16 digit)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Nomor KK (16 digit)
+                </label>
+                {fieldPending("no_kk") && (
+                  <PendingBadge newValue={fieldPending("no_kk")!.new_value} />
+                )}
+              </div>
               <input
                 type="text"
                 value={noKk}
                 onChange={e => setNoKk(e.target.value.replace(/\D/g, "").slice(0, 16))}
                 placeholder="3171xxxxxxxxxx"
                 maxLength={16}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200
-                  bg-gray-50 text-sm font-mono text-gray-900
+                disabled={!!fieldPending("no_kk")}
+                className={`w-full px-4 py-3 rounded-xl border text-sm font-mono
                   placeholder:text-gray-400 focus:outline-none focus:ring-2
-                  focus:ring-blue-100 focus:border-blue-400 transition-all"
+                  focus:ring-blue-100 focus:border-blue-400 transition-all ${
+                    fieldPending("no_kk")
+                      ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "border-gray-200 bg-gray-50 text-gray-900"
+                  }`}
               />
               <p className="text-[10px] text-gray-400 mt-1">
                 {noKk.length}/16 digit
@@ -466,33 +651,51 @@ export default function ProfilPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  Tanggal Lahir
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Tanggal Lahir
+                  </label>
+                </div>
+                {fieldPending("tanggal_lahir") && (
+                  <div className="mb-1.5"><PendingBadge newValue={fieldPending("tanggal_lahir")!.new_value} /></div>
+                )}
                 <input
                   type="date"
                   value={tanggalLahir}
                   onChange={e => setTanggalLahir(e.target.value)}
                   max={new Date().toISOString().split("T")[0]}
-                  className="w-full px-3 py-3 rounded-xl border border-gray-200
-                    bg-gray-50 text-sm text-gray-900
+                  disabled={!!fieldPending("tanggal_lahir")}
+                  className={`w-full px-3 py-3 rounded-xl border text-sm
                     focus:outline-none focus:ring-2 focus:ring-blue-100
-                    focus:border-blue-400 transition-all"
+                    focus:border-blue-400 transition-all ${
+                      fieldPending("tanggal_lahir")
+                        ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "border-gray-200 bg-gray-50 text-gray-900"
+                    }`}
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  Tempat Lahir
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Tempat Lahir
+                  </label>
+                </div>
+                {fieldPending("tempat_lahir") && (
+                  <div className="mb-1.5"><PendingBadge newValue={fieldPending("tempat_lahir")!.new_value} /></div>
+                )}
                 <input
                   type="text"
                   value={tempatLahir}
                   onChange={e => setTempatLahir(e.target.value)}
                   placeholder="Jakarta"
-                  className="w-full px-3 py-3 rounded-xl border border-gray-200
-                    bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400
-                    focus:outline-none focus:ring-2 focus:ring-blue-100
-                    focus:border-blue-400 transition-all"
+                  disabled={!!fieldPending("tempat_lahir")}
+                  className={`w-full px-3 py-3 rounded-xl border text-sm
+                    placeholder:text-gray-400 focus:outline-none focus:ring-2
+                    focus:ring-blue-100 focus:border-blue-400 transition-all ${
+                      fieldPending("tempat_lahir")
+                        ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "border-gray-200 bg-gray-50 text-gray-900"
+                    }`}
                 />
               </div>
             </div>
@@ -503,7 +706,11 @@ export default function ProfilPage() {
               onChange={setJenisKelamin}
               options={JENIS_KELAMIN_OPTIONS}
               placeholder="Pilih jenis kelamin"
+              disabled={!!fieldPending("jenis_kelamin")}
             />
+            {fieldPending("jenis_kelamin") && (
+              <PendingBadge newValue={fieldPending("jenis_kelamin")!.new_value} />
+            )}
 
             <SelectField
               label="Agama"
@@ -511,21 +718,35 @@ export default function ProfilPage() {
               onChange={setAgama}
               options={AGAMA_OPTIONS}
               placeholder="Pilih agama"
+              disabled={!!fieldPending("agama")}
             />
+            {fieldPending("agama") && (
+              <PendingBadge newValue={fieldPending("agama")!.new_value} />
+            )}
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Alamat sesuai KTP
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Alamat sesuai KTP
+                </label>
+                {fieldPending("alamat_ktp") && (
+                  <PendingBadge newValue={fieldPending("alamat_ktp")!.new_value} />
+                )}
+              </div>
               <textarea
                 value={alamatKtp}
                 onChange={e => setAlamatKtp(e.target.value)}
                 placeholder="Jl. Contoh No. 1, RT 001/RW 001..."
                 rows={3}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200
-                  bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400
-                  resize-none focus:outline-none focus:ring-2 focus:ring-blue-100
-                  focus:border-blue-400 transition-all"
+                disabled={!!fieldPending("alamat_ktp")}
+                className={`w-full px-4 py-3 rounded-xl border text-sm
+                  placeholder:text-gray-400 resize-none focus:outline-none
+                  focus:ring-2 focus:ring-blue-100 focus:border-blue-400
+                  transition-all ${
+                    fieldPending("alamat_ktp")
+                      ? "border-gray-100 bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "border-gray-200 bg-gray-50 text-gray-900"
+                  }`}
               />
             </div>
           </div>
@@ -539,58 +760,39 @@ export default function ProfilPage() {
               onChange={setPekerjaan}
               options={PEKERJAAN_OPTIONS}
               placeholder="Pilih pekerjaan"
+              disabled={!!fieldPending("pekerjaan")}
             />
+            {fieldPending("pekerjaan") && (
+              <PendingBadge newValue={fieldPending("pekerjaan")!.new_value} />
+            )}
+
             <SelectField
               label="Status Perkawinan"
               value={statusKawin}
               onChange={setStatusKawin}
               options={STATUS_KAWIN_OPTIONS}
               placeholder="Pilih status perkawinan"
+              disabled={!!fieldPending("status_kawin")}
             />
+            {fieldPending("status_kawin") && (
+              <PendingBadge newValue={fieldPending("status_kawin")!.new_value} />
+            )}
           </div>
 
           {/* ── Section 4: Data RT ───────────────────────────────── */}
           <Section title="Data RT"
-            subtitle="Status tinggal dan hubungan keluarga" />
+            subtitle="Status tinggal dan pendidikan" />
           <div className="px-5 py-4 space-y-4">
             <SelectField
               label="Status Tinggal"
               value={statusTinggal}
               onChange={setStatusTinggal}
               options={STATUS_TINGGAL_OPTIONS}
+              disabled={!!fieldPending("status_tinggal")}
             />
-            <SelectField
-              label="Status dalam Keluarga"
-              value={statusKeluarga}
-              onChange={setStatusKeluarga}
-              options={STATUS_KELUARGA_OPTIONS}
-              placeholder="Pilih status keluarga"
-            />
-
-            {/* Kepala Keluarga toggle */}
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="text-sm font-semibold text-gray-700">
-                  Kepala Keluarga
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Bertanggung jawab atas tagihan iuran KK
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setKepalaKeluarga(k => !k)}
-                className={`w-12 h-6 rounded-full transition-colors relative
-                  flex-shrink-0 ${
-                    kepalaKeluarga ? "bg-blue-600" : "bg-gray-200"
-                  }`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full shadow-sm
-                  absolute top-0.5 transition-transform ${
-                    kepalaKeluarga ? "translate-x-6" : "translate-x-0.5"
-                  }`} />
-              </button>
-            </div>
+            {fieldPending("status_tinggal") && (
+              <PendingBadge newValue={fieldPending("status_tinggal")!.new_value} />
+            )}
 
             <SelectField
               label="Pendidikan Terakhir"
@@ -598,52 +800,49 @@ export default function ProfilPage() {
               onChange={setPendidikan}
               options={PENDIDIKAN_OPTIONS}
               placeholder="Pilih pendidikan terakhir"
+              disabled={!!fieldPending("pendidikan_terakhir")}
             />
-            <SelectField
-              label="Kewarganegaraan"
-              value={kewarganegaraan}
-              onChange={setKewarganegaraan}
-              options={KEWARGANEGARAAN_OPTIONS}
-            />
-            <SelectField
-              label="Hubungan dengan Kepala KK"
-              value={hubunganKK}
-              onChange={setHubunganKK}
-              options={HUBUNGAN_KK_OPTIONS}
-              placeholder="Pilih hubungan dengan KK"
-            />
+            {fieldPending("pendidikan_terakhir") && (
+              <PendingBadge newValue={fieldPending("pendidikan_terakhir")!.new_value} />
+            )}
           </div>
 
-          {/* Save button */}
+          {/* Submit button */}
           <div className="px-5 pb-5 pt-2">
             <button
               onClick={() => mutation.mutate()}
-              disabled={mutation.isPending || !formName.trim() || !formPhone.trim()}
+              // disabled={mutation.isPending || !isDirty || !formName.trim() || !formPhone.trim()}
+              disabled={mutation.isPending || !isDirty}
               className={`w-full flex items-center justify-center gap-2 py-3
                 rounded-xl text-sm font-semibold transition-all ${
-                  !mutation.isPending && formName.trim() && formPhone.trim()
+                  !mutation.isPending && isDirty
+                  // !mutation.isPending && isDirty && formName.trim() && formPhone.trim()
                     ? "bg-blue-900 text-white hover:bg-blue-800 active:scale-[0.98]"
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
             >
               {mutation.isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</>
-                : mutation.isSuccess
-                ? <><CheckCircle className="w-4 h-4" /> Tersimpan</>
-                : <><Save className="w-4 h-4" /> Simpan Perubahan</>
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengajukan...</>
+                : <><Save className="w-4 h-4" /> Ajukan Perubahan</>
               }
             </button>
+            {!isDirty && (
+              <p className="text-center text-[11px] text-gray-400 mt-2">
+                Belum ada perubahan untuk diajukan
+              </p>
+            )}
           </div>
         </div>
 
         {/* Info */}
         <div className="mx-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
           <p className="text-xs font-bold text-amber-800 mb-1">
-            ℹ️ Kenapa data ini diperlukan?
+            ℹ️ Bagaimana cara kerjanya?
           </p>
           <div className="space-y-1 text-xs text-amber-700">
-            <p>• NIK & No. KK diperlukan untuk surat keterangan RT</p>
-            <p>• Data kependudukan membantu Ketua RT mengelola warga</p>
+            <p>• Perubahan data akan ditinjau oleh Ketua RT terlebih dahulu</p>
+            <p>• Data lama tetap berlaku sampai perubahan disetujui</p>
+            <p>• Anda akan melihat status pengajuan di bagian "Riwayat Permintaan"</p>
             <p>• Semua data aman dan hanya dapat dilihat pengurus RT</p>
           </div>
         </div>

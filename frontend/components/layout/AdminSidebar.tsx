@@ -1,10 +1,13 @@
 // components/layout/AdminSidebar.tsx
 "use client";
+import { getPendingChangeRequests } from "@/lib/api/warga";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { useRTStore } from "@/store/rt.store";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
+  ClipboardCheck,
   ClipboardList,
   CreditCard,
   LayoutDashboard,
@@ -22,6 +25,7 @@ import { usePathname } from "next/navigation";
 const NAV = [
   { label: "Dashboard",  href: "/dashboard",        icon: LayoutDashboard },
   { label: "Data Warga", href: "/warga",             icon: Users           },
+  { label: "Persetujuan",  href: "/persetujuan",      icon: ClipboardCheck  },
   { label: "Tagihan",    href: "/tagihan",           icon: CreditCard      },
   { label: "Pengumuman", href: "/pengumuman",        icon: Megaphone       },
   { label: "Laporan",    href: "/laporan",           icon: ClipboardList   },
@@ -53,6 +57,14 @@ export function AdminSidebar() {
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
+
+  const { data: pendingRequests = [] } = useQuery({
+  queryKey: ["pending-change-requests"],
+  queryFn:  getPendingChangeRequests,
+  enabled:  !isSuperadmin,
+  staleTime: 30_000,
+  refetchInterval: 30_000,
+});
 
   return (
     <aside className="w-60 min-h-screen bg-gray-900 flex flex-col flex-shrink-0">
@@ -111,6 +123,13 @@ export function AdminSidebar() {
               )}>
               <Icon className="w-4 h-4 flex-shrink-0" />
               <span>{label}</span>
+              {href === "/persetujuan" && pendingRequests.length > 0 && (
+                <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full
+                       bg-amber-500 text-white text-[10px] font-bold
+                       flex items-center justify-center">
+                  {pendingRequests.length}
+                </span>
+              )}
             </Link>
           ))
         )}

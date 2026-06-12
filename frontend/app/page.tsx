@@ -39,7 +39,7 @@ const PLANS = [
     cta: "Coba Gratis 7 Hari", href: "/register", featured: true,
   },
   {
-    name: "RTMudah Pro", price: "Rp 149k", period: "/bulan",
+    name: "RTMudah Pro", price: "Rp(akan diumumkan)", period: "",
     desc: "Untuk RW yang mengelola banyak RT sekaligus",
     features: ["Warga tidak terbatas", "Semua fitur RT Aktif", "Laporan analitik", "3 Admin per RT"],
     cta: "Hubungi Kami", href: "mailto:hello@rtmudah.com", featured: false,

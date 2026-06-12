@@ -275,7 +275,6 @@ export default function LandingPage() {
       </section>
 
       {/* ── PRICING ──────────────────────────────────────────────── */}
-      {/* ── PRICING ──────────────────────────────────────────────── */}
 <section id="harga" className="py-16 sm:py-20 px-4 sm:px-6">
   <div className="max-w-5xl mx-auto text-center">
     <div className="text-xs font-bold text-green-700 tracking-widest uppercase mb-3">Harga</div>

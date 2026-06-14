@@ -1,9 +1,10 @@
 "use client";
 // app/(admin)/warga/page.tsx
-// UPDATED: KKDetailModal now has 3 tabs — Data, Edit, Riwayat Perubahan
-// Ketua RT can edit any warga profile field with full audit trail.
+// UPDATED: Added TambahWargaModal — Ketua RT manually adds warga data
+// KKDetailModal has 3 tabs — Data, Edit, Riwayat Perubahan
 
 import {
+  adminCreateResident,
   AGAMA_OPTIONS,
   formatDate,
   getResidentChangeLog,
@@ -20,6 +21,7 @@ import {
   suspendWarga,
   updateResidentProfile,
   verifyWarga,
+  type AdminCreateResidentPayload,
   type AdminUpdateResidentPayload,
   type ChangeLogEntry,
   type ResidentDetail,
@@ -29,9 +31,9 @@ import {
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckCircle, ChevronRight, Clock, Edit3,
-  History, Home, Loader2, RefreshCw, Save,
-  Search, UserCheck, Users, X, XCircle,
+  CheckCircle, ChevronDown, ChevronRight, Clock, Edit3,
+  History, Home, Loader2, Plus, RefreshCw, Save,
+  Search, UserCheck, UserPlus, Users, X, XCircle,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
@@ -86,17 +88,18 @@ function DataRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-// ─── Edit form field components (elderly-friendly: large, clear) ──────────────
+// ─── Edit form field components ───────────────────────────────────────────────
 
 function EditField({
-  label, name, value, onChange, type = "text", options,
+  label, name, value, onChange, type = "text", options, placeholder,
 }: {
-  label:    string;
-  name:     string;
-  value:    string | boolean | null | undefined;
-  onChange: (name: string, value: string | boolean) => void;
-  type?:    "text" | "select" | "textarea" | "date" | "toggle";
-  options?: readonly string[];
+  label:       string;
+  name:        string;
+  value:       string | boolean | null | undefined;
+  onChange:    (name: string, value: string | boolean) => void;
+  type?:       "text" | "select" | "textarea" | "date" | "toggle";
+  options?:    readonly string[];
+  placeholder?: string;
 }) {
   const baseInput = "w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all";
 
@@ -145,6 +148,7 @@ function EditField({
           value={(value as string) ?? ""}
           onChange={(e) => onChange(name, e.target.value)}
           rows={3}
+          placeholder={placeholder}
           className={cn(baseInput, "resize-none")}
         />
       </div>
@@ -158,6 +162,7 @@ function EditField({
         type={type}
         value={(value as string) ?? ""}
         onChange={(e) => onChange(name, e.target.value)}
+        placeholder={placeholder}
         className={baseInput}
       />
     </div>
@@ -201,8 +206,7 @@ function ChangeLogTab({ residentId }: { residentId: string }) {
         const roleLabel = log.changed_by_role === "ketua_rt" ? "Ketua RT" :
                           log.changed_by_role === "superadmin" ? "Superadmin" : "Warga";
         return (
-          <div key={log.id}
-            className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <div key={log.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
             <div className="flex items-start justify-between gap-2 mb-2">
               <div>
                 <span className="text-xs font-semibold text-gray-800">{log.field_label}</span>
@@ -217,7 +221,6 @@ function ChangeLogTab({ residentId }: { residentId: string }) {
               </div>
               <span className="text-[10px] text-gray-400 flex-shrink-0">{date}</span>
             </div>
-
             <div className="flex items-center gap-2 text-xs">
               <span className="px-2 py-1 rounded bg-red-50 text-red-700 font-mono line-through">
                 {log.old_value ?? "—"}
@@ -227,7 +230,6 @@ function ChangeLogTab({ residentId }: { residentId: string }) {
                 {log.new_value ?? "—"}
               </span>
             </div>
-
             <p className="text-[10px] text-gray-400 mt-1.5">
               Diubah oleh {log.changed_by_name}
             </p>
@@ -238,7 +240,7 @@ function ChangeLogTab({ residentId }: { residentId: string }) {
   );
 }
 
-// ─── KK Member Card (read-only, unchanged) ────────────────────────────────────
+// ─── KK Member Card ───────────────────────────────────────────────────────────
 
 function KKMemberCard({ member, isMain = false }: { member: ResidentDetail; isMain?: boolean }) {
   const [expanded, setExpanded] = useState(isMain);
@@ -290,6 +292,208 @@ function KKMemberCard({ member, isMain = false }: { member: ResidentDetail; isMa
   );
 }
 
+// ─── Tambah Warga Modal ═══════════════════════════════════════════════════════
+// === ADDED — modal for Ketua RT to manually add a warga without a login account
+
+const EMPTY_FORM: AdminCreateResidentPayload = {
+  full_name: "",
+  phone:     "",
+};
+
+function TambahWargaModal({ onClose, rtGroupId }: { onClose: () => void; rtGroupId: string }) {
+// function TambahWargaModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm]           = useState<AdminCreateResidentPayload>(EMPTY_FORM);
+  const [showDetail, setShowDetail] = useState(false);
+
+  const handleChange = (name: string, value: string | boolean) => {
+    setForm(prev => ({ ...prev, [name]: value as string }));
+  };
+
+  // Build payload — strip empty optional strings so backend doesn't get ""
+  const buildPayload = (): AdminCreateResidentPayload => {
+    const p: AdminCreateResidentPayload = {
+      full_name: form.full_name.trim(),
+      phone:     form.phone.trim(),
+    };
+    if (form.nik?.trim())             p.nik             = form.nik.trim();
+    if (form.no_kk?.trim())           p.no_kk           = form.no_kk.trim();
+    if (form.status_keluarga?.trim()) p.status_keluarga = form.status_keluarga.trim();
+    if (form.alamat_ktp?.trim())      p.alamat_ktp      = form.alamat_ktp.trim();
+    if (form.alamat_domisili?.trim()) p.alamat_domisili = form.alamat_domisili.trim();
+    return p;
+  };
+
+  const isValid = form.full_name.trim().length >= 3 && form.phone.trim().length >= 9;
+
+  const createMutation = useMutation({
+    mutationFn: () => adminCreateResident(buildPayload()),
+    onSuccess: (result) => {
+      toast.success(`✅ ${result.message}`);
+      // queryClient.invalidateQueries({ queryKey: ["warga"] });
+      queryClient.invalidateQueries({ queryKey: ["warga", rtGroupId] });
+      onClose();
+    },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+        ? detail.map((e: any) => e.msg).join(", ")
+        : "Gagal menambahkan warga";
+      toast.error(msg);
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-4">
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <UserPlus className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">Tambah Warga</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Data warga tanpa akun login</p>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+
+          {/* Info banner */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+            <p className="text-xs text-blue-800 font-medium leading-relaxed">
+              💡 Masukkan data warga yang belum punya akun di RTMudah.
+              Hanya <strong>Nama</strong> dan <strong>No. WhatsApp</strong> yang wajib diisi —
+              data lainnya bisa dilengkapi kapan saja via tombol Edit.
+            </p>
+          </div>
+
+          {/* Wajib diisi */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+              Wajib Diisi
+            </p>
+            <div className="space-y-3">
+              <EditField
+                label="Nama Lengkap *"
+                name="full_name"
+                value={form.full_name}
+                onChange={handleChange}
+                placeholder="cth. Budi Santoso"
+              />
+              <EditField
+                label="No. WhatsApp *"
+                name="phone"
+                value={form.phone}
+                onChange={handleChange}
+                placeholder="cth. 081234567890"
+              />
+            </div>
+          </div>
+
+          {/* Detail Tambahan — collapsible */}
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowDetail(d => !d)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Detail Tambahan <span className="font-normal normal-case text-gray-400">(opsional)</span>
+              </span>
+              <ChevronDown className={cn(
+                "w-4 h-4 text-gray-400 transition-transform",
+                showDetail ? "rotate-180" : ""
+              )} />
+            </button>
+
+            {showDetail && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
+                <div className="pt-3">
+                  <EditField
+                    label="NIK (16 digit)"
+                    name="nik"
+                    value={form.nik ?? ""}
+                    onChange={handleChange}
+                    placeholder="cth. 1771234567890001"
+                  />
+                </div>
+                <EditField
+                  label="Nomor KK (16 digit)"
+                  name="no_kk"
+                  value={form.no_kk ?? ""}
+                  onChange={handleChange}
+                  placeholder="cth. 1771234567890001"
+                />
+                <EditField
+                  label="Status Keluarga"
+                  name="status_keluarga"
+                  value={form.status_keluarga ?? ""}
+                  onChange={handleChange}
+                  type="select"
+                  options={STATUS_KELUARGA_OPTIONS}
+                />
+                <EditField
+                  label="Alamat KTP"
+                  name="alamat_ktp"
+                  value={form.alamat_ktp ?? ""}
+                  onChange={handleChange}
+                  type="textarea"
+                  placeholder="Alamat sesuai KTP"
+                />
+                <EditField
+                  label="Alamat Domisili"
+                  name="alamat_domisili"
+                  value={form.alamat_domisili ?? ""}
+                  onChange={handleChange}
+                  type="textarea"
+                  placeholder="Alamat tinggal saat ini (jika beda dari KTP)"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            onClick={() => createMutation.mutate()}
+            disabled={!isValid || createMutation.isPending}
+            className={cn(
+              "flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all",
+              isValid && !createMutation.isPending
+                ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98]"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+            )}
+          >
+            {createMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan…</>
+            ) : (
+              <><Plus className="w-4 h-4" /> Tambah Warga</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── KK Detail Modal (3 tabs: Data | Edit | Riwayat) ─────────────────────────
 
 function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void }) {
@@ -302,17 +506,11 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
     staleTime: 60_000,
   });
 
-  // Edit form state — initialised from profile when tab switches
   const [editForm, setEditForm] = useState<AdminUpdateResidentPayload>({});
   const [formDirty, setFormDirty] = useState(false);
 
-  // When switching to edit tab, seed form with current values
   const handleTabChange = (tab: ModalTab) => {
     if (tab === "edit" && profile && !formDirty) {
-      // Only include fields that have actual values.
-      // Empty/null fields are omitted entirely so they don\'t
-      // appear in the JSON payload and don\'t trigger model_fields_set.
-      // This ensures the backend only processes truly provided fields.
       const form: AdminUpdateResidentPayload = {};
       if (profile.full_name)           form.full_name           = profile.full_name;
       if (profile.phone)               form.phone               = profile.phone;
@@ -330,7 +528,6 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
       if (profile.pendidikan_terakhir) form.pendidikan_terakhir = profile.pendidikan_terakhir;
       if (profile.kewarganegaraan)     form.kewarganegaraan     = profile.kewarganegaraan;
       if (profile.hubungan_dengan_kk)  form.hubungan_dengan_kk  = profile.hubungan_dengan_kk;
-      // kepala_keluarga is bool so always include it
       form.kepala_keluarga = profile.kepala_keluarga ?? false;
       setEditForm(form);
     }
@@ -350,22 +547,21 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
         return;
       }
       toast.success(`✅ ${result.message} — ${result.changed_fields} field diperbarui`);
-      // Invalidate profile + change log cache
       queryClient.invalidateQueries({ queryKey: ["warga-profile", user.id] });
       queryClient.invalidateQueries({ queryKey: ["change-log", profile!.id] });
       queryClient.invalidateQueries({ queryKey: ["warga"] });
       setFormDirty(false);
-      setActiveTab("data");   // return to data view after save
+      setActiveTab("data");
     },
     onError: (err: any) => {
-  const detail = err?.response?.data?.detail;
-  const msg = typeof detail === "string"
-    ? detail
-    : Array.isArray(detail)
-    ? detail.map((e: any) => e.msg).join(", ")
-    : "Gagal menyimpan perubahan";
-  toast.error(msg);
-},
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+        ? detail.map((e: any) => e.msg).join(", ")
+        : "Gagal menyimpan perubahan";
+      toast.error(msg);
+    },
   });
 
   const completeness = useMemo(() => {
@@ -439,7 +635,6 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
             </div>
           ) : (
             <>
-              {/* ── DATA TAB ── */}
               {activeTab === "data" && (
                 <>
                   <div className="bg-gray-50 rounded-xl p-4">
@@ -486,7 +681,6 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
                 </>
               )}
 
-              {/* ── EDIT TAB ── */}
               {activeTab === "edit" && (
                 <div className="space-y-4">
                   <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -494,8 +688,6 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
                       ⚡ Perubahan sebagai Ketua RT langsung tersimpan dan tercatat di riwayat.
                     </p>
                   </div>
-
-                  {/* AKUN */}
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Akun</p>
                     <div className="space-y-3">
@@ -503,46 +695,39 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
                       <EditField label="Nomor HP"         name="phone"      value={editForm.phone}      onChange={handleFieldChange} />
                     </div>
                   </div>
-
-                  {/* IDENTITAS KTP */}
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Identitas KTP</p>
                     <div className="space-y-3">
-                      <EditField label="NIK (16 digit)"   name="nik"          value={editForm.nik}          onChange={handleFieldChange} />
-                      <EditField label="Nomor KK"         name="no_kk"        value={editForm.no_kk}        onChange={handleFieldChange} />
+                      <EditField label="NIK (16 digit)"   name="nik"           value={editForm.nik}           onChange={handleFieldChange} />
+                      <EditField label="Nomor KK"         name="no_kk"         value={editForm.no_kk}         onChange={handleFieldChange} />
                       <EditField label="Tanggal Lahir"    name="tanggal_lahir" value={editForm.tanggal_lahir} onChange={handleFieldChange} type="date" />
-                      <EditField label="Tempat Lahir"     name="tempat_lahir" value={editForm.tempat_lahir} onChange={handleFieldChange} />
+                      <EditField label="Tempat Lahir"     name="tempat_lahir"  value={editForm.tempat_lahir}  onChange={handleFieldChange} />
                       <EditField label="Jenis Kelamin"    name="jenis_kelamin" value={editForm.jenis_kelamin} onChange={handleFieldChange} type="select" options={JENIS_KELAMIN_OPTIONS} />
-                      <EditField label="Agama"            name="agama"        value={editForm.agama}        onChange={handleFieldChange} type="select" options={AGAMA_OPTIONS} />
-                      <EditField label="Alamat KTP"       name="alamat_ktp"   value={editForm.alamat_ktp}   onChange={handleFieldChange} type="textarea" />
+                      <EditField label="Agama"            name="agama"         value={editForm.agama}         onChange={handleFieldChange} type="select" options={AGAMA_OPTIONS} />
+                      <EditField label="Alamat KTP"       name="alamat_ktp"    value={editForm.alamat_ktp}    onChange={handleFieldChange} type="textarea" />
                     </div>
                   </div>
-
-                  {/* DATA SOSIAL */}
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Data Sosial</p>
                     <div className="space-y-3">
-                      <EditField label="Pekerjaan"        name="pekerjaan"           value={editForm.pekerjaan}           onChange={handleFieldChange} type="select" options={PEKERJAAN_OPTIONS} />
-                      <EditField label="Status Perkawinan" name="status_kawin"        value={editForm.status_kawin}        onChange={handleFieldChange} type="select" options={STATUS_KAWIN_OPTIONS} />
-                      <EditField label="Pendidikan"       name="pendidikan_terakhir" value={editForm.pendidikan_terakhir} onChange={handleFieldChange} type="select" options={PENDIDIKAN_OPTIONS} />
-                      <EditField label="Kewarganegaraan"  name="kewarganegaraan"     value={editForm.kewarganegaraan}     onChange={handleFieldChange} type="select" options={KEWARGANEGARAAN_OPTIONS} />
+                      <EditField label="Pekerjaan"         name="pekerjaan"           value={editForm.pekerjaan}           onChange={handleFieldChange} type="select" options={PEKERJAAN_OPTIONS} />
+                      <EditField label="Status Perkawinan" name="status_kawin"         value={editForm.status_kawin}        onChange={handleFieldChange} type="select" options={STATUS_KAWIN_OPTIONS} />
+                      <EditField label="Pendidikan"        name="pendidikan_terakhir"  value={editForm.pendidikan_terakhir} onChange={handleFieldChange} type="select" options={PENDIDIKAN_OPTIONS} />
+                      <EditField label="Kewarganegaraan"   name="kewarganegaraan"      value={editForm.kewarganegaraan}     onChange={handleFieldChange} type="select" options={KEWARGANEGARAAN_OPTIONS} />
                     </div>
                   </div>
-
-                  {/* DATA RT */}
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Data RT</p>
                     <div className="space-y-3">
-                      <EditField label="Status Tinggal"   name="status_tinggal"   value={editForm.status_tinggal}   onChange={handleFieldChange} type="select" options={STATUS_TINGGAL_OPTIONS} />
-                      <EditField label="Status Keluarga"  name="status_keluarga"  value={editForm.status_keluarga}  onChange={handleFieldChange} type="select" options={STATUS_KELUARGA_OPTIONS} />
-                      <EditField label="Hubungan KK"      name="hubungan_dengan_kk" value={editForm.hubungan_dengan_kk} onChange={handleFieldChange} type="select" options={HUBUNGAN_KK_OPTIONS} />
-                      <EditField label="Kepala Keluarga"  name="kepala_keluarga"  value={editForm.kepala_keluarga}  onChange={handleFieldChange} type="toggle" />
+                      <EditField label="Status Tinggal"  name="status_tinggal"    value={editForm.status_tinggal}    onChange={handleFieldChange} type="select" options={STATUS_TINGGAL_OPTIONS} />
+                      <EditField label="Status Keluarga" name="status_keluarga"   value={editForm.status_keluarga}   onChange={handleFieldChange} type="select" options={STATUS_KELUARGA_OPTIONS} />
+                      <EditField label="Hubungan KK"     name="hubungan_dengan_kk" value={editForm.hubungan_dengan_kk} onChange={handleFieldChange} type="select" options={HUBUNGAN_KK_OPTIONS} />
+                      <EditField label="Kepala Keluarga" name="kepala_keluarga"   value={editForm.kepala_keluarga}   onChange={handleFieldChange} type="toggle" />
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ── LOG TAB ── */}
               {activeTab === "log" && (
                 <ChangeLogTab residentId={profile.id} />
               )}
@@ -591,7 +776,7 @@ function KKDetailModal({ user, onClose }: { user: WargaUser; onClose: () => void
   );
 }
 
-// ─── Warga Row (unchanged) ────────────────────────────────────────────────────
+// ─── Warga Row ────────────────────────────────────────────────────────────────
 
 function WargaRow({ user, rtGroupId, onVerify, onSuspend, isActionLoading, onViewProfile }: {
   user: WargaUser; rtGroupId: string;
@@ -608,7 +793,9 @@ function WargaRow({ user, rtGroupId, onVerify, onSuspend, isActionLoading, onVie
             <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-700 transition-colors">
               {user.full_name}
             </p>
-            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            <p className="text-xs text-gray-500 truncate">
+              {user.email || <span className="italic text-gray-400">Belum punya akun</span>}
+            </p>
             {user.phone && <p className="text-xs text-gray-400">{user.phone}</p>}
           </div>
         </div>
@@ -628,7 +815,7 @@ function WargaRow({ user, rtGroupId, onVerify, onSuspend, isActionLoading, onVie
               <UserCheck className="w-3.5 h-3.5" /> Verifikasi
             </button>
           )}
-          {user.status === "active" && user.role !== "ketua_rt" && (
+          {user.status === "active" && user.role !== "ketua_rt" && !user.is_ghost && (
             <button onClick={() => onSuspend(user.id)} disabled={isActionLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors">
               <XCircle className="w-3.5 h-3.5" /> Suspend
@@ -647,17 +834,19 @@ function WargaRow({ user, rtGroupId, onVerify, onSuspend, isActionLoading, onVie
   );
 }
 
-// ─── Main Page (unchanged) ────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WargaPage() {
   const { data: session }  = useSession();
   const queryClient        = useQueryClient();
   const rtGroupId          = (session?.user as any)?.rt_group_id as string | null;
 
-  const [filter,       setFilter]       = useState<WargaFilter>("all");
-  const [search,       setSearch]       = useState("");
-  const [actionId,     setActionId]     = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<WargaUser | null>(null);
+  const [filter,         setFilter]         = useState<WargaFilter>("all");
+  const [search,         setSearch]         = useState("");
+  const [actionId,       setActionId]       = useState<string | null>(null);
+  const [selectedUser,   setSelectedUser]   = useState<WargaUser | null>(null);
+  // === ADDED — controls TambahWargaModal visibility
+  const [showTambah,     setShowTambah]     = useState(false);
 
   const { data: wargaList = [], isLoading, isError, refetch } = useQuery({
     queryKey:  ["warga", rtGroupId, filter],
@@ -757,6 +946,14 @@ export default function WargaPage() {
               value={search} onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400" />
           </div>
+          {/* === ADDED — Tambah Warga button */}
+          <button
+            onClick={() => setShowTambah(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 active:scale-[0.98] transition-all flex-shrink-0"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Tambah Warga
+          </button>
           <button onClick={() => refetch()}
             className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
             <RefreshCw className="w-4 h-4" />
@@ -784,6 +981,14 @@ export default function WargaPage() {
             <p className="font-bold text-gray-800">
               {search ? "Tidak ada hasil pencarian" : "Belum ada warga"}
             </p>
+            {!search && (
+              <button
+                onClick={() => setShowTambah(true)}
+                className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors mx-auto"
+              >
+                <UserPlus className="w-4 h-4" /> Tambah Warga Pertama
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -815,6 +1020,13 @@ export default function WargaPage() {
           </div>
         )}
       </div>
+
+      {/* === ADDED — Tambah Warga modal */}
+      {showTambah && (
+        // <TambahWargaModal onClose={() => setShowTambah(false)} />
+        <TambahWargaModal onClose={() => setShowTambah(false)} rtGroupId={rtGroupId} />
+
+      )}
 
       {selectedUser && (
         <KKDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} />

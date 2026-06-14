@@ -185,3 +185,80 @@ class SubmitChangeRequestResponse(BaseModel):
     created_count: int
     requests:       list[ChangeRequestItem]
     message:        str
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# === ADDED — Tambah Warga: Ketua RT manually adds a resident's data ===
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AdminCreateResidentRequest(BaseModel):
+    """
+    POST /warga/admin-create
+    Ketua RT manually adds a warga's data — no login account required.
+
+    Only full_name + phone are mandatory. Everything else is optional —
+    Ketua RT can fill in NIK/No KK/alamat later via admin-update, or the
+    warga can fill it in themselves once they self-register and the
+    record is linked (linking/matching is a future enhancement, not v1).
+    """
+    full_name:       str
+    phone:           str
+    nik:             Optional[str] = None
+    no_kk:           Optional[str] = None
+    status_keluarga: Optional[str] = None   # StatusKeluarga enum value
+    alamat_ktp:      Optional[str] = None
+    alamat_domisili: Optional[str] = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 3:
+            raise ValueError("Nama lengkap minimal 3 karakter")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        v = v.strip().replace("-", "").replace(" ", "")
+        if not v:
+            raise ValueError("Nomor HP wajib diisi")
+        # Accept 08xxxxxxxxxx / 628xxxxxxxxxx / +628xxxxxxxxxx, 9-15 digits total
+        digits = v[1:] if v.startswith("0") else (
+            v[2:] if v.startswith("62") else (
+                v[3:] if v.startswith("+62") else None
+            )
+        )
+        if digits is None or not digits.isdigit() or not (8 <= len(digits) <= 13):
+            raise ValueError("Format nomor HP tidak valid (contoh: 081234567890)")
+        if v.startswith("0"):
+            v = "62" + v[1:]
+        elif v.startswith("+"):
+            v = v[1:]
+        return v
+
+    @field_validator("nik", "no_kk", mode="before")
+    @classmethod
+    def validate_16_digit(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if not v.isdigit() or len(v) != 16:
+            raise ValueError("Harus 16 digit angka")
+        return v
+
+    @field_validator("status_keluarga", "alamat_ktp", "alamat_domisili", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
+
+class AdminCreateResidentResponse(BaseModel):
+    """Returned after Ketua RT successfully adds a new warga."""
+    id:        str
+    full_name: str
+    phone:     str
+    status:    str
+    message:   str

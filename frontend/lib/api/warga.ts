@@ -14,6 +14,7 @@ export interface WargaUser {
   role:       string;
   status:     "pending" | "active" | "suspended";
   created_at: string | null;
+  is_ghost?:  boolean;
 }
 
 export interface ResidentDetail {
@@ -259,6 +260,41 @@ export const reviewChangeRequest = async (
 ): Promise<ReviewChangeRequestResponse> => {
   const { data } = await apiClient.patch<ReviewChangeRequestResponse>(
     `/warga/change-requests/${requestId}/review`,
+    payload,
+  );
+  return data;
+};
+
+// === ADDED — Tambah Warga =====================================================
+
+export interface AdminCreateResidentPayload {
+  full_name:        string;
+  phone:            string;
+  nik?:             string;
+  no_kk?:           string;
+  status_keluarga?: string;
+  alamat_ktp?:      string;
+  alamat_domisili?: string;
+}
+
+export interface AdminCreateResidentResponse {
+  id:        string;
+  full_name: string;
+  phone:     string;
+  status:    string;
+  message:   string;
+}
+
+/**
+ * POST /warga/admin-create
+ * Ketua RT manually adds a warga's data — no login account required.
+ * Returns the new resident id + confirmation message.
+ */
+export const adminCreateResident = async (
+  payload: AdminCreateResidentPayload,
+): Promise<AdminCreateResidentResponse> => {
+  const { data } = await apiClient.post<AdminCreateResidentResponse>(
+    "/warga/admin-create",
     payload,
   );
   return data;

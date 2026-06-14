@@ -375,38 +375,75 @@ async def create_rt_group(
     except IntegrityError as e:
         raise HTTPException(status_code=409, detail=_integrity_message(e))
 
+# REPLACE the entire get_rt_members endpoint (lines 378-405) with this:
+
 @router.get("/rt-groups/{rt_group_id}/members", tags=["RT Groups"])
 async def get_rt_members(
     rt_group_id: UUID,
-    status:      Optional[str] = None,   # pending | active | suspended
-    role:        Optional[str] = None,   # warga | admin_rt
+    status:      Optional[str] = None,
+    role:        Optional[str] = None,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
     List members of an RT group.
+    Includes both registered users AND ghost residents (user_id=None)
+    added manually by Ketua RT via Tambah Warga.
     Optional filters: ?status=pending, ?status=active, ?role=warga
     """
-    users = await PgUserRepository(db).list_by_rt_group(rt_group_id)
+    from app.modules.warga.infrastructure.models import ResidentModel
+    from sqlalchemy import select
 
-    # Apply optional filters
+    # ── Registered users (existing behaviour) ────────────────────
+    users = await PgUserRepository(db).list_by_rt_group(rt_group_id)
     if status:
         users = [u for u in users if u.status == status]
     if role:
         users = [u for u in users if u.role == role]
 
-    return [
+    result = [
         {
-            "id":        str(u.id),
-            "full_name": u.full_name,
-            "email":     u.email,
-            "phone":     getattr(u, "phone", None),
-            "role":      u.role,
-            "status":    u.status,
+            "id":         str(u.id),
+            "full_name":  u.full_name,
+            "email":      u.email,
+            "phone":      getattr(u, "phone", None),
+            "role":       u.role,
+            "status":     u.status,
             "created_at": str(u.created_at) if hasattr(u, "created_at") else None,
+            "is_ghost":   False,
         }
         for u in users
     ]
+
+    # ── Ghost residents (user_id=None, added via Tambah Warga) ───
+    # Skip if filtering by role (ghosts have no role)
+    if not role:
+        ghost_q = await db.execute(
+            select(ResidentModel).where(
+                ResidentModel.rt_group_id == rt_group_id,
+                ResidentModel.user_id     == None,
+                ResidentModel.is_anggota_kk == False,
+            ).order_by(ResidentModel.created_at.desc())
+        )
+        ghosts = ghost_q.scalars().all()
+
+        # Apply status filter if provided
+        if status:
+            ghosts = [g for g in ghosts if g.status == status]
+
+        for g in ghosts:
+            result.append({
+                "id":         str(g.id),
+                "full_name":  g.full_name,
+                "email":      "",
+                "phone":      g.phone or None,
+                "role":       "warga",
+                "status":     g.status,
+                "created_at": str(g.created_at),
+                "is_ghost":   True,
+            })
+
+    return result
 
 
 # ── GET /rt-groups/{rt_group_id} ─────────────────────────────────────────────

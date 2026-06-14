@@ -7,6 +7,8 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.exceptions import EntityNotFoundError
 from app.modules.warga.application.schemas import (AddAnggotaRequest,
+                                                   AdminCreateResidentRequest,
+                                                   AdminCreateResidentResponse,
                                                    AdminUpdateResidentRequest,
                                                    ChangeLogEntry,
                                                    ChangeRequestItem,
@@ -23,6 +25,7 @@ from app.modules.warga.infrastructure.models import (
 from app.modules.warga.infrastructure.repository import PgResidentRepository
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -45,6 +48,74 @@ async def register_resident(
         ownership_type=body.ownership_type, member_count=body.member_count,
     )
     return {"id": str(resident.id), "status": resident.status}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# === ADDED — POST /warga/admin-create
+# Tambah Warga: Ketua RT manually adds a warga's data — no login account
+# required. Creates a "ghost" resident record (user_id=None, status=ACTIVE).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/warga/admin-create", status_code=201,
+              response_model=AdminCreateResidentResponse, tags=["Warga"])
+async def admin_create_resident(
+    body:         AdminCreateResidentRequest,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Ketua RT manually adds a warga's data — no login account required.
+
+    Only full_name + phone are mandatory. NIK/No KK/status_keluarga/
+    alamat_ktp/alamat_domisili are optional and can be filled in later
+    via PATCH /warga/{resident_id}/admin-update.
+
+    The resulting record has user_id=None ("ghost" resident). Linking
+    this record to a real account when the warga self-registers is a
+    future enhancement — not handled in v1.
+    """
+    from app.modules.iam.infrastructure.models import RTGroupModel
+    from app.modules.warga.domain.entities import Resident, StatusKeluarga
+
+    admin_id = _uuid.UUID(current_user["user_id"])
+
+    rt_result = await db.execute(
+        select(RTGroupModel).where(RTGroupModel.admin_user_id == admin_id)
+    )
+    rt_group = rt_result.scalar_one_or_none()
+    if not rt_group:
+        raise HTTPException(status_code=404, detail="RT group tidak ditemukan untuk akun ini")
+
+    repo = PgResidentRepository(db)
+    resident = Resident.create_by_admin(
+        rt_group_id=rt_group.id,
+        full_name=body.full_name,
+        phone=body.phone,
+        added_by_user_id=admin_id,
+        nik=body.nik,
+        no_kk=body.no_kk,
+        status_keluarga=StatusKeluarga(body.status_keluarga) if body.status_keluarga else None,
+        alamat_ktp=body.alamat_ktp,
+        alamat_domisili=body.alamat_domisili,
+    )
+
+    try:
+        await repo.save(resident)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Gagal menyimpan — NIK atau No. KK mungkin sudah terdaftar"
+        )
+
+    return AdminCreateResidentResponse(
+        id=str(resident.id),
+        full_name=resident.full_name,
+        phone=resident.phone,
+        status=resident.status.value,
+        message=f"{resident.full_name} berhasil ditambahkan",
+    )
 
 
 @router.get("/warga/rt/{rt_group_id}", tags=["Warga"])
@@ -1074,4 +1145,3 @@ async def review_change_request(
         "message":    f"Perubahan {req.field_label} disetujui dan diterapkan",
         "request_id": str(request_id),
     }
-

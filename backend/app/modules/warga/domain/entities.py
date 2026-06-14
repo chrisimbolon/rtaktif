@@ -133,6 +133,8 @@ class Resident(BaseEntity):
     jenis_kelamin:  Optional[JenisKelamin]      = None
     agama:          Optional[Agama]             = None
     alamat_ktp:     Optional[str]               = None
+    # === ADDED — alamat domisili (current/actual residence, separate from KTP) ===
+    alamat_domisili: Optional[str]              = None
 
     pendidikan_terakhir: Optional[PendidikanTerakhir] = None
     kewarganegaraan:     Kewarganegaraan               = Kewarganegaraan.WNI
@@ -197,6 +199,47 @@ class Resident(BaseEntity):
         ))
         return r
 
+    # === ADDED — Tambah Warga: Ketua RT manually adds a resident, ===
+    # === no login account required (user_id stays None / "ghost" record) ===
+    @classmethod
+    def create_by_admin(
+        cls,
+        rt_group_id: UUID,
+        full_name: str,
+        phone: str,
+        added_by_user_id: UUID,
+        nik: Optional[str] = None,
+        no_kk: Optional[str] = None,
+        status_keluarga: Optional[StatusKeluarga] = None,
+        alamat_ktp: Optional[str] = None,
+        alamat_domisili: Optional[str] = None,
+    ) -> "Resident":
+        """
+        Ketua RT manually adds a warga's data — no login account yet.
+        user_id stays None until the warga registers and is matched/linked
+        (matching logic is a future enhancement, not built in v1).
+
+        Status is ACTIVE immediately — Ketua RT-entered data is trusted,
+        skips the self-registration verification step.
+        """
+        r = cls(
+            rt_group_id=rt_group_id,
+            user_id=None,
+            full_name=full_name.strip(),
+            phone=phone,
+            nik=nik,
+            no_kk=no_kk,
+            status_keluarga=status_keluarga,
+            alamat_ktp=alamat_ktp.strip() if alamat_ktp else None,
+            alamat_domisili=alamat_domisili.strip() if alamat_domisili else None,
+            status=ResidentStatus.ACTIVE,
+            added_by_user_id=added_by_user_id,
+        )
+        r.add_event(ResidentRegistered(
+            resident_id=r.id, rt_group_id=rt_group_id, full_name=full_name,
+        ))
+        return r
+
     def update_profile(
         self,
         full_name:       Optional[str]           = None,
@@ -213,6 +256,7 @@ class Resident(BaseEntity):
         status_keluarga: Optional[StatusKeluarga]= None,
         kepala_keluarga: Optional[bool]          = None,
         alamat_ktp:          Optional[str]             = None,
+        alamat_domisili:     Optional[str]             = None,  # === ADDED ===
         pendidikan_terakhir: Optional[PendidikanTerakhir] = None,
         kewarganegaraan:     Optional[Kewarganegaraan]    = None,
         hubungan_dengan_kk:  Optional[HubunganDenganKK]  = None,
@@ -232,6 +276,7 @@ class Resident(BaseEntity):
         if status_keluarga is not None: self.status_keluarga = status_keluarga
         if kepala_keluarga is not None: self.kepala_keluarga = kepala_keluarga
         if alamat_ktp            is not None: self.alamat_ktp            = alamat_ktp.strip()
+        if alamat_domisili       is not None: self.alamat_domisili       = alamat_domisili.strip()  # === ADDED ===
         if pendidikan_terakhir   is not None: self.pendidikan_terakhir   = pendidikan_terakhir
         if kewarganegaraan       is not None: self.kewarganegaraan       = kewarganegaraan
         if hubungan_dengan_kk    is not None: self.hubungan_dengan_kk    = hubungan_dengan_kk

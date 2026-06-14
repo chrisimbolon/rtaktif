@@ -44,6 +44,8 @@ class ResidentModel(Base):
     jenis_kelamin:  Mapped[str | None]      = mapped_column(String(20),  nullable=True)
     agama:          Mapped[str | None]      = mapped_column(String(20),  nullable=True)
     alamat_ktp:     Mapped[str | None]      = mapped_column(Text,        nullable=True)
+    # === ADDED — alamat domisili (current/actual residence, separate from KTP) ===
+    alamat_domisili: Mapped[str | None]     = mapped_column(Text,        nullable=True)
 
     # ── Education + citizenship ───────────────────────────────────────────────
     pendidikan_terakhir: Mapped[str | None] = mapped_column(String(30), nullable=True)

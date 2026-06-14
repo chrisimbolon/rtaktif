@@ -70,32 +70,46 @@ class PgResidentRepository(ResidentRepository):
             existing.status_keluarga = entity.status_keluarga.value  if entity.status_keluarga else None
             existing.kepala_keluarga = entity.kepala_keluarga
             existing.alamat_ktp      = entity.alamat_ktp
+            existing.alamat_domisili = entity.alamat_domisili  # === ADDED ===
             existing.pendidikan_terakhir = entity.pendidikan_terakhir.value if entity.pendidikan_terakhir else None
             existing.kewarganegaraan     = entity.kewarganegaraan.value if entity.kewarganegaraan else "WNI"
             existing.hubungan_dengan_kk  = entity.hubungan_dengan_kk.value if entity.hubungan_dengan_kk else None
         else:
+            # === UPDATED — added fields required for create_by_admin() / ===
+            # === Tambah Warga "ghost" residents (no_kk, status_keluarga,  ===
+            # === alamat_ktp, alamat_domisili, status_tinggal,             ===
+            # === kewarganegaraan, is_anggota_kk, added_by_user_id)        ===
             self.session.add(ResidentModel(
-                id             = entity.id,
-                rt_group_id    = entity.rt_group_id,
-                user_id        = entity.user_id,
-                full_name      = entity.full_name,
-                phone          = entity.phone,
-                nik            = entity.nik,
-                street         = entity.street,
-                rt_number      = entity.rt_number,
-                rw_number      = entity.rw_number,
-                kelurahan      = entity.kelurahan,
-                kecamatan      = entity.kecamatan,
-                kota           = entity.kota,
-                block          = entity.block,
-                unit_number    = entity.unit_number,
-                ownership_type = entity.ownership_type.value,
-                status         = entity.status.value,
-                member_count   = entity.member_count,
-                verified_at    = entity.verified_at,
-                verified_by    = entity.verified_by,
-                created_at     = entity.created_at,
-                updated_at     = entity.updated_at,
+                id               = entity.id,
+                rt_group_id      = entity.rt_group_id,
+                user_id          = entity.user_id,
+                full_name        = entity.full_name,
+                phone            = entity.phone,
+                nik              = entity.nik,
+                no_kk            = entity.no_kk,
+                street           = entity.street,
+                rt_number        = entity.rt_number,
+                rw_number        = entity.rw_number,
+                kelurahan        = entity.kelurahan,
+                kecamatan        = entity.kecamatan,
+                kota             = entity.kota,
+                block            = entity.block,
+                unit_number      = entity.unit_number,
+                ownership_type   = entity.ownership_type.value,
+                status           = entity.status.value,
+                status_tinggal   = entity.status_tinggal.value if entity.status_tinggal else "TETAP",
+                status_keluarga  = entity.status_keluarga.value if entity.status_keluarga else None,
+                kepala_keluarga  = entity.kepala_keluarga,
+                alamat_ktp       = entity.alamat_ktp,
+                alamat_domisili  = entity.alamat_domisili,
+                kewarganegaraan  = entity.kewarganegaraan.value if entity.kewarganegaraan else "WNI",
+                member_count     = entity.member_count,
+                verified_at      = entity.verified_at,
+                verified_by      = entity.verified_by,
+                is_anggota_kk    = entity.is_anggota_kk,
+                added_by_user_id = entity.added_by_user_id,
+                created_at       = entity.created_at,
+                updated_at       = entity.updated_at,
             ))
         await self.session.flush()
         return entity
@@ -148,6 +162,7 @@ class PgResidentRepository(ResidentRepository):
             status_keluarga = StatusKeluarga(row.status_keluarga) if row.status_keluarga else None,
             kepala_keluarga = row.kepala_keluarga or False,
             alamat_ktp      = row.alamat_ktp,
+            alamat_domisili = row.alamat_domisili,  # === ADDED ===
             pendidikan_terakhir = PendidikanTerakhir(row.pendidikan_terakhir) if row.pendidikan_terakhir else None,
             kewarganegaraan     = Kewarganegaraan(row.kewarganegaraan) if row.kewarganegaraan else Kewarganegaraan.WNI,
             hubungan_dengan_kk  = HubunganDenganKK(row.hubungan_dengan_kk) if row.hubungan_dengan_kk else None,

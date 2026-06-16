@@ -76,9 +76,10 @@ class PgResidentRepository(ResidentRepository):
             existing.hubungan_dengan_kk  = entity.hubungan_dengan_kk.value if entity.hubungan_dengan_kk else None
         else:
             # === UPDATED — added fields required for create_by_admin() / ===
-            # === Tambah Warga "ghost" residents (no_kk, status_keluarga,  ===
-            # === alamat_ktp, alamat_domisili, status_tinggal,             ===
-            # === kewarganegaraan, is_anggota_kk, added_by_user_id)        ===
+            # === Tambah Warga "ghost" residents AND Import Excel bulk    ===
+            # === create (jenis_kelamin, tanggal_lahir, tempat_lahir,     ===
+            # === agama, pekerjaan, status_kawin, pendidikan_terakhir,    ===
+            # === hubungan_dengan_kk — previously silently dropped here)  ===
             self.session.add(ResidentModel(
                 id               = entity.id,
                 rt_group_id      = entity.rt_group_id,
@@ -108,6 +109,15 @@ class PgResidentRepository(ResidentRepository):
                 verified_by      = entity.verified_by,
                 is_anggota_kk    = entity.is_anggota_kk,
                 added_by_user_id = entity.added_by_user_id,
+                # === ADDED — the 8 missing fields ===
+                tanggal_lahir        = entity.tanggal_lahir,
+                tempat_lahir         = entity.tempat_lahir,
+                jenis_kelamin        = entity.jenis_kelamin.value if entity.jenis_kelamin else None,
+                agama                = entity.agama.value if entity.agama else None,
+                pekerjaan            = entity.pekerjaan.value if entity.pekerjaan else None,
+                status_kawin         = entity.status_kawin.value if entity.status_kawin else None,
+                pendidikan_terakhir  = entity.pendidikan_terakhir.value if entity.pendidikan_terakhir else None,
+                hubungan_dengan_kk   = entity.hubungan_dengan_kk.value if entity.hubungan_dengan_kk else None,
                 created_at       = entity.created_at,
                 updated_at       = entity.updated_at,
             ))

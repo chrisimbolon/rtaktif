@@ -6,6 +6,8 @@
 import {
   adminCreateResident,
   AGAMA_OPTIONS,
+  confirmImport,
+  downloadImportTemplate,
   formatDate,
   getResidentChangeLog,
   getWargaFullProfile,
@@ -15,6 +17,7 @@ import {
   KEWARGANEGARAAN_OPTIONS,
   PEKERJAAN_OPTIONS,
   PENDIDIKAN_OPTIONS,
+  previewImport,
   STATUS_KAWIN_OPTIONS,
   STATUS_KELUARGA_OPTIONS,
   STATUS_TINGGAL_OPTIONS,
@@ -24,16 +27,17 @@ import {
   type AdminCreateResidentPayload,
   type AdminUpdateResidentPayload,
   type ChangeLogEntry,
+  type ImportConfirmResponse,
+  type ImportPreviewResponse,
   type ResidentDetail,
   type WargaFilter,
-  type WargaUser,
+  type WargaUser
 } from "@/lib/api/warga";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckCircle, ChevronDown, ChevronRight, Clock, Edit3,
-  History, Home, Loader2, Plus, RefreshCw, Save,
-  Search, UserCheck, UserPlus, Users, X, XCircle,
+  CheckCircle, ChevronDown, ChevronRight, Clock, Download, Edit3, FileSpreadsheet, History, Home, Loader2, Plus, RefreshCw, Save,
+  Search, Upload, UserCheck, UserPlus, Users, X, XCircle,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
@@ -288,6 +292,417 @@ function KKMemberCard({ member, isMain = false }: { member: ResidentDetail; isMa
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Import Warga Modal ═══════════════════════════════════════════════════════
+type ImportStep = "upload" | "preview" | "result";
+
+function ImportWargaModal({
+  rtGroupId,
+  onClose,
+}: {
+  rtGroupId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [step,     setStep]     = useState<ImportStep>("upload");
+  const [preview,  setPreview]  = useState<ImportPreviewResponse | null>(null);
+  const [result,   setResult]   = useState<ImportConfirmResponse | null>(null);
+  const [previewTab, setPreviewTab] = useState<"valid" | "errors">("valid");
+  const [dragOver, setDragOver] = useState(false);
+
+  // ── Upload mutation ────────────────────────────────────────────────────────
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => previewImport(file),
+    onSuccess: (data) => {
+      setPreview(data);
+      setPreviewTab(data.valid_count > 0 ? "valid" : "errors");
+      setStep("preview");
+    },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === "string" ? detail : "Gagal membaca file";
+      toast.error(msg);
+    },
+  });
+
+  // ── Confirm mutation ───────────────────────────────────────────────────────
+  const confirmMutation = useMutation({
+    mutationFn: () => confirmImport(preview!.valid),
+    onSuccess: (data) => {
+      setResult(data);
+      setStep("result");
+      queryClient.invalidateQueries({ queryKey: ["warga", rtGroupId] });
+    },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Gagal mengimport data");
+    },
+  });
+
+  // ── File handling ──────────────────────────────────────────────────────────
+  const handleFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      toast.error("Hanya file .xlsx yang didukung");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran file maksimal 5 MB");
+      return;
+    }
+    uploadMutation.mutate(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+    e.target.value = "";
+  };
+
+  // ── Step titles ────────────────────────────────────────────────────────────
+  const stepTitle = {
+    upload:  "Import Data Warga",
+    preview: "Preview Import",
+    result:  "Import Selesai",
+  }[step];
+
+  const stepSubtitle = {
+    upload:  "Upload file Excel sesuai template RTMudah",
+    preview: preview
+      ? `${preview.valid_count} siap diimport · ${preview.error_count} bermasalah`
+      : "",
+    result: result ? `${result.imported} warga berhasil ditambahkan` : "",
+  }[step];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-4">
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+              <FileSpreadsheet className="w-4 h-4 text-green-700" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">{stepTitle}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{stepSubtitle}</p>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 max-h-[65vh] overflow-y-auto">
+
+          {/* ── STEP 1: UPLOAD ── */}
+          {step === "upload" && (
+            <div className="space-y-4">
+              {/* Download template */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-blue-800">
+                    Belum punya template?
+                  </p>
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    Download template Excel RTMudah, isi data, lalu upload di sini.
+                  </p>
+                </div>
+                <button
+                  onClick={() => downloadImportTemplate()}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Template
+                </button>
+              </div>
+
+              {/* Drop zone */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                className={cn(
+                  "border-2 border-dashed rounded-xl p-10 text-center transition-all",
+                  dragOver
+                    ? "border-green-400 bg-green-50"
+                    : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
+                )}
+              >
+                {uploadMutation.isPending ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+                    <p className="text-sm font-medium text-gray-600">
+                      Membaca dan memvalidasi file…
+                    </p>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer flex flex-col items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center">
+                      <Upload className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">
+                        Drag & drop file Excel di sini
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        atau <span className="text-green-600 font-semibold underline">pilih file</span>
+                        {" "}· Hanya .xlsx · Maks. 5 MB
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      className="hidden"
+                      onChange={handleFileInput}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Rules */}
+              <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1.5">
+                <p className="text-xs font-semibold text-gray-600">Aturan pengisian:</p>
+                <ul className="text-xs text-gray-500 space-y-1 list-disc list-inside">
+                  <li>Baris 1 = header (jangan diubah)</li>
+                  <li>Kolom <strong>nama_lengkap</strong> dan <strong>no_whatsapp</strong> wajib diisi</li>
+                  <li>Tanggal lahir format: <strong>DD-MM-YYYY</strong> atau <strong>DD/MM/YYYY</strong> (cth: 21-05-1990)</li>
+                  <li>NIK dan No. KK harus <strong>16 digit angka</strong></li>
+                  <li>Maksimal <strong>500 baris</strong> per file</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 2: PREVIEW ── */}
+          {step === "preview" && preview && (
+            <div className="space-y-4">
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-xl font-extrabold text-gray-800">{preview.total_rows}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Total Baris</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-3 text-center">
+                  <p className="text-xl font-extrabold text-green-700">{preview.valid_count}</p>
+                  <p className="text-xs text-green-600 mt-0.5">Siap Import</p>
+                </div>
+                <div className={cn(
+                  "rounded-xl p-3 text-center",
+                  preview.error_count > 0 ? "bg-red-50" : "bg-gray-50"
+                )}>
+                  <p className={cn(
+                    "text-xl font-extrabold",
+                    preview.error_count > 0 ? "text-red-600" : "text-gray-400"
+                  )}>
+                    {preview.error_count}
+                  </p>
+                  <p className={cn(
+                    "text-xs mt-0.5",
+                    preview.error_count > 0 ? "text-red-500" : "text-gray-400"
+                  )}>
+                    Bermasalah
+                  </p>
+                </div>
+              </div>
+
+              {/* Warning if errors exist */}
+              {preview.error_count > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-xs text-amber-800 font-medium">
+                    ⚠️ {preview.error_count} baris bermasalah tidak akan diimport.
+                    Perbaiki di file Excel lalu upload ulang, atau lanjutkan import
+                    {preview.valid_count > 0 ? ` ${preview.valid_count} baris yang valid` : ""}.
+                  </p>
+                </div>
+              )}
+
+              {/* Tab bar */}
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setPreviewTab("valid")}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-semibold transition-all",
+                    previewTab === "valid"
+                      ? "bg-white text-green-700 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Valid ({preview.valid_count})
+                </button>
+                <button
+                  onClick={() => setPreviewTab("errors")}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-semibold transition-all",
+                    previewTab === "errors"
+                      ? "bg-white text-red-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  Error ({preview.error_count})
+                </button>
+              </div>
+
+              {/* Valid rows table */}
+              {previewTab === "valid" && (
+                <div className="rounded-xl border border-gray-100 overflow-hidden">
+                  {preview.valid.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-gray-400">
+                      Tidak ada baris yang valid
+                    </div>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <th className="px-3 py-2 text-left font-semibold text-gray-500 w-12">#</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-500">Nama</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-500">No. WA</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-500">NIK</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-500 w-8"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.valid.map((row) => (
+                          <tr key={row.row} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-400">{row.row}</td>
+                            <td className="px-3 py-2 font-medium text-gray-800">{row.full_name}</td>
+                            <td className="px-3 py-2 text-gray-600 font-mono">{row.phone}</td>
+                            <td className="px-3 py-2 text-gray-400 font-mono">{row.nik || "—"}</td>
+                            <td className="px-3 py-2">
+                              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* Error rows table */}
+              {previewTab === "errors" && (
+                <div className="rounded-xl border border-red-100 overflow-hidden">
+                  {preview.errors.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-gray-400">
+                      Tidak ada error 🎉
+                    </div>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-red-50 border-b border-red-100">
+                          <th className="px-3 py-2 text-left font-semibold text-red-700 w-12">Baris</th>
+                          <th className="px-3 py-2 text-left font-semibold text-red-700">Field</th>
+                          <th className="px-3 py-2 text-left font-semibold text-red-700">Nilai</th>
+                          <th className="px-3 py-2 text-left font-semibold text-red-700">Masalah</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.errors.map((err, i) => (
+                          <tr key={i} className="border-b border-red-50 last:border-0 bg-white hover:bg-red-50/30">
+                            <td className="px-3 py-2 text-gray-500">{err.row}</td>
+                            <td className="px-3 py-2 font-mono text-red-700">{err.field}</td>
+                            <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">
+                              {err.value || "—"}
+                            </td>
+                            <td className="px-3 py-2 text-red-600">{err.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 3: RESULT ── */}
+          {step === "result" && result && (
+            <div className="py-6 text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-gray-900">
+                  {result.imported} warga berhasil diimport!
+                </p>
+                {result.failed > 0 && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {result.failed} baris gagal tersimpan
+                  </p>
+                )}
+              </div>
+              {result.failed_rows.length > 0 && (
+                <div className="text-left bg-red-50 rounded-xl p-4 space-y-1">
+                  <p className="text-xs font-semibold text-red-700 mb-2">Baris yang gagal:</p>
+                  {result.failed_rows.map((f, i) => (
+                    <p key={i} className="text-xs text-red-600">
+                      Baris {f.row}: {f.reason}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          {step === "upload" && (
+            <button onClick={onClose}
+              className="w-full py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+              Batal
+            </button>
+          )}
+
+          {step === "preview" && (
+            <>
+              <button
+                onClick={() => { setStep("upload"); setPreview(null); }}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                ← Upload Ulang
+              </button>
+              <button
+                onClick={() => confirmMutation.mutate()}
+                disabled={!preview || preview.valid_count === 0 || confirmMutation.isPending}
+                className={cn(
+                  "flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all",
+                  preview && preview.valid_count > 0 && !confirmMutation.isPending
+                    ? "bg-green-600 text-white hover:bg-green-700 active:scale-[0.98]"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                )}
+              >
+                {confirmMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Mengimport…</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Import {preview?.valid_count ?? 0} Warga</>
+                )}
+              </button>
+            </>
+          )}
+
+          {step === "result" && (
+            <button onClick={onClose}
+              className="w-full py-3 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors">
+              Selesai
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -847,6 +1262,7 @@ export default function WargaPage() {
   const [selectedUser,   setSelectedUser]   = useState<WargaUser | null>(null);
   // === ADDED — controls TambahWargaModal visibility
   const [showTambah,     setShowTambah]     = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const { data: wargaList = [], isLoading, isError, refetch } = useQuery({
     queryKey:  ["warga", rtGroupId, filter],
@@ -954,6 +1370,15 @@ export default function WargaPage() {
             <UserPlus className="w-3.5 h-3.5" />
             Tambah Warga
           </button>
+
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 active:scale-[0.98] transition-all flex-shrink-0"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Import Excel
+          </button>
+
           <button onClick={() => refetch()}
             className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
             <RefreshCw className="w-4 h-4" />
@@ -1026,6 +1451,10 @@ export default function WargaPage() {
         // <TambahWargaModal onClose={() => setShowTambah(false)} />
         <TambahWargaModal onClose={() => setShowTambah(false)} rtGroupId={rtGroupId} />
 
+      )}
+
+      {showImport && (
+        <ImportWargaModal rtGroupId={rtGroupId}onClose={() => setShowImport(false)} />
       )}
 
       {selectedUser && (

@@ -299,3 +299,96 @@ export const adminCreateResident = async (
   );
   return data;
 };
+
+export interface ImportPreviewRow {
+  row:                 number;
+  full_name:           string;
+  phone:               string;
+  nik?:                string;
+  no_kk?:              string;
+  tanggal_lahir?:      string;
+  tempat_lahir?:       string;
+  jenis_kelamin?:      string;
+  agama?:              string;
+  pekerjaan?:          string;
+  status_kawin?:       string;
+  status_tinggal?:     string;
+  status_keluarga?:    string;
+  alamat_ktp?:         string;
+  alamat_domisili?:    string;
+  pendidikan_terakhir?: string;
+  kewarganegaraan?:    string;
+  hubungan_dengan_kk?: string;
+}
+
+export interface ImportPreviewError {
+  row:    number;
+  field:  string;
+  value:  string;
+  reason: string;
+}
+
+export interface ImportPreviewResponse {
+  valid:       ImportPreviewRow[];
+  errors:      ImportPreviewError[];
+  total_rows:  number;
+  valid_count: number;
+  error_count: number;
+}
+
+export interface ImportConfirmResponse {
+  message:     string;
+  imported:    number;
+  failed:      number;
+  failed_rows: { row: number | string; reason: string }[];
+}
+
+/**
+ * POST /warga/import/preview
+ * Upload .xlsx, validate rows, return preview. Nothing saved yet.
+ */
+export const previewImport = async (
+  file: File,
+): Promise<ImportPreviewResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post<ImportPreviewResponse>(
+    "/warga/import/preview",
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return data;
+};
+
+/**
+ * POST /warga/import/confirm
+ * Bulk-insert the validated rows from preview. Returns result summary.
+ */
+export const confirmImport = async (
+  rows: ImportPreviewRow[],
+): Promise<ImportConfirmResponse> => {
+  const { data } = await apiClient.post<ImportConfirmResponse>(
+    "/warga/import/confirm",
+    { rows },
+  );
+  return data;
+};
+
+/**
+ * GET /warga/import/template
+ * Triggers download of the RTMudah .xlsx import template.
+ */
+export const downloadImportTemplate = async (): Promise<void> => {
+  const response = await apiClient.get("/warga/import/template", {
+    responseType: "blob",
+  });
+  const url  = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a");
+  link.href  = url;
+  link.setAttribute("download", "template_import_warga.xlsx");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+

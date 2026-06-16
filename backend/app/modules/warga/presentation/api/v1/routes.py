@@ -16,6 +16,8 @@ from app.modules.warga.application.schemas import (AddAnggotaRequest,
                                                    ReviewChangeRequestBody,
                                                    SubmitChangeRequestBody,
                                                    SubmitChangeRequestResponse)
+from app.modules.warga.application.use_cases.import_residents import (
+    bulk_create, parse_excel)
 from app.modules.warga.application.use_cases.register_resident import \
     RegisterResident
 from app.modules.warga.application.use_cases.verify_resident import \
@@ -23,7 +25,8 @@ from app.modules.warga.application.use_cases.verify_resident import \
 from app.modules.warga.infrastructure.models import (
     ResidentChangeLogModel, ResidentChangeRequestModel, ResidentModel)
 from app.modules.warga.infrastructure.repository import PgResidentRepository
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1144,4 +1147,177 @@ async def review_change_request(
     return {
         "message":    f"Perubahan {req.field_label} disetujui dan diterapkan",
         "request_id": str(request_id),
+    }
+
+
+@router.get("/warga/import/template", tags=["Warga"])
+async def download_import_template(
+    current_user: dict = Depends(require_admin),
+):
+    """
+    GET /warga/import/template
+    Returns a pre-filled .xlsx template Ketua RT can download and fill in.
+    Row 1 = headers, Row 2 = example row (greyed out in Excel).
+    """
+    import io
+
+    import openpyxl
+    from fastapi.responses import StreamingResponse
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Warga"
+
+    headers = [
+        ("nama_lengkap",       "Nama Lengkap *",        20),
+        ("no_whatsapp",        "No. WhatsApp *",         18),
+        ("nik",                "NIK",                    18),
+        ("no_kk",              "No. KK",                 18),
+        ("tanggal_lahir",      "Tanggal Lahir (YYYY-MM-DD)", 22),
+        ("tempat_lahir",       "Tempat Lahir",           18),
+        ("jenis_kelamin",      "Jenis Kelamin",          16),
+        ("agama",              "Agama",                  12),
+        ("pekerjaan",          "Pekerjaan",              22),
+        ("status_kawin",       "Status Kawin",           16),
+        ("status_tinggal",     "Status Tinggal",         16),
+        ("status_keluarga",    "Status Keluarga",        16),
+        ("alamat_ktp",         "Alamat KTP",             30),
+        ("alamat_domisili",    "Alamat Domisili",        30),
+        ("pendidikan_terakhir","Pendidikan Terakhir",    20),
+        ("kewarganegaraan",    "Kewarganegaraan",        16),
+        ("hubungan_dengan_kk", "Hubungan dengan KK",    20),
+    ]
+
+    # ── Header row ────────────────────────────────────────────────────────────
+    header_fill     = PatternFill("solid", fgColor="1E3A5F")
+    header_font     = Font(bold=True, color="FFFFFF", size=11)
+    required_fill   = PatternFill("solid", fgColor="2563EB")
+
+    for col_idx, (key, label, width) in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=key)
+        cell.font      = header_font
+        cell.fill      = required_fill if key in ("nama_lengkap", "no_whatsapp") else header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 36
+
+    # ── Example row ───────────────────────────────────────────────────────────
+    example_data = [
+        "Budi Santoso", "081234567890", "3171234567890001", "3171234567890001",
+        "1990-05-21", "Jakarta", "LAKI-LAKI", "ISLAM",
+        "KARYAWAN SWASTA", "KAWIN", "TETAP", "SUAMI",
+        "Jl. Mawar No. 5 RT 001", "Jl. Mawar No. 5 RT 001",
+        "S1", "WNI", "KEPALA KELUARGA",
+    ]
+    example_fill = PatternFill("solid", fgColor="F0F4FF")
+    example_font = Font(italic=True, color="6B7280", size=10)
+
+    for col_idx, value in enumerate(example_data, start=1):
+        cell = ws.cell(row=2, column=col_idx, value=value)
+        cell.fill      = example_fill
+        cell.font      = example_font
+        cell.alignment = Alignment(vertical="center")
+
+    ws.row_dimensions[2].height = 20
+    ws.freeze_panes = "A2"  # freeze header row
+
+    # ── Save to bytes ─────────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=template_import_warga.xlsx"},
+    )
+
+
+@router.post("/warga/import/preview", tags=["Warga"])
+async def preview_import(
+    current_user: dict = Depends(require_admin),
+    file: UploadFile = File(..., description=".xlsx file — gunakan template RTMudah"),
+):
+    """
+    POST /warga/import/preview
+    Phase 1 — Upload .xlsx, validate every row, return preview.
+    Nothing is written to the database.
+    """
+    from app.modules.warga.application.use_cases.import_residents import \
+        parse_excel
+
+    # ── File type guard ───────────────────────────────────────────────────────
+    filename = file.filename or ""
+    if not filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=422,
+            detail="Hanya file .xlsx yang didukung. Gunakan template yang disediakan."
+        )
+
+    file_bytes = await file.read()
+
+    if len(file_bytes) > 5 * 1024 * 1024:   # 5 MB hard limit
+        raise HTTPException(
+            status_code=422,
+            detail="Ukuran file maksimal 5 MB"
+        )
+
+    try:
+        result = parse_excel(file_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return result
+
+
+@router.post("/warga/import/confirm", status_code=201, tags=["Warga"])
+async def confirm_import(
+    body:         dict,
+    current_user: dict = Depends(require_admin),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    POST /warga/import/confirm
+    Phase 2 — Bulk-insert the validated rows returned by /preview.
+    Body: { "rows": [...valid rows from preview response...] }
+    """
+    from app.modules.iam.infrastructure.models import RTGroupModel
+    from app.modules.warga.application.use_cases.import_residents import \
+        bulk_create
+    from sqlalchemy import select as sa_select
+
+    rows = body.get("rows", [])
+    if not rows:
+        raise HTTPException(status_code=422, detail="Tidak ada data untuk diimport")
+
+    if len(rows) > 500:
+        raise HTTPException(
+            status_code=422,
+            detail="Maksimal 500 baris per import. Pecah file menjadi beberapa bagian."
+        )
+
+    admin_id = _uuid.UUID(current_user["user_id"])
+
+    rt_result = await db.execute(
+        sa_select(RTGroupModel).where(RTGroupModel.admin_user_id == admin_id)
+    )
+    rt_group = rt_result.scalar_one_or_none()
+    if not rt_group:
+        raise HTTPException(status_code=404, detail="RT group tidak ditemukan")
+
+    result = await bulk_create(
+        valid_rows=rows,
+        rt_group_id=rt_group.id,
+        added_by_user_id=admin_id,
+        db=db,
+    )
+
+    return {
+        "message":     f"{result['imported']} warga berhasil diimport",
+        "imported":    result["imported"],
+        "failed":      result["failed"],
+        "failed_rows": result["failed_rows"],
     }

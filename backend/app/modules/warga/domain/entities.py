@@ -213,6 +213,18 @@ class Resident(BaseEntity):
         status_keluarga: Optional[StatusKeluarga] = None,
         alamat_ktp: Optional[str] = None,
         alamat_domisili: Optional[str] = None,
+        # === ADDED — full profile fields, needed by Import Excel ===
+        # === so no validated Excel column is silently discarded ===
+        tanggal_lahir: Optional[date] = None,
+        tempat_lahir: Optional[str] = None,
+        jenis_kelamin: Optional[JenisKelamin] = None,
+        agama: Optional[Agama] = None,
+        pekerjaan: Optional[Pekerjaan] = None,
+        status_kawin: Optional[StatusKawin] = None,
+        status_tinggal: Optional[StatusTinggal] = None,
+        pendidikan_terakhir: Optional[PendidikanTerakhir] = None,
+        kewarganegaraan: Optional[Kewarganegaraan] = None,
+        hubungan_dengan_kk: Optional[HubunganDenganKK] = None,
     ) -> "Resident":
         """
         Ketua RT manually adds a warga's data — no login account yet.
@@ -221,6 +233,11 @@ class Resident(BaseEntity):
 
         Status is ACTIVE immediately — Ketua RT-entered data is trusted,
         skips the self-registration verification step.
+
+        Accepts the full Resident profile shape (not just identity fields)
+        so both Tambah Warga (manual single-entry) and Import Excel
+        (bulk, richer data) can use this single factory without losing
+        any validated field.
         """
         r = cls(
             rt_group_id=rt_group_id,
@@ -232,6 +249,16 @@ class Resident(BaseEntity):
             status_keluarga=status_keluarga,
             alamat_ktp=alamat_ktp.strip() if alamat_ktp else None,
             alamat_domisili=alamat_domisili.strip() if alamat_domisili else None,
+            tanggal_lahir=tanggal_lahir,
+            tempat_lahir=tempat_lahir.strip() if tempat_lahir else None,
+            jenis_kelamin=jenis_kelamin,
+            agama=agama,
+            pekerjaan=pekerjaan,
+            status_kawin=status_kawin,
+            status_tinggal=status_tinggal if status_tinggal else StatusTinggal.TETAP,
+            pendidikan_terakhir=pendidikan_terakhir,
+            kewarganegaraan=kewarganegaraan if kewarganegaraan else Kewarganegaraan.WNI,
+            hubungan_dengan_kk=hubungan_dengan_kk,
             status=ResidentStatus.ACTIVE,
             added_by_user_id=added_by_user_id,
         )
